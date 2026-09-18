@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FinMatrix",
-    "slug": "finmatrix",
+    "name": "FinMatrix Admin",
+    "slug": "finmatrix-admin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "finmatrix",
+    "scheme": "finmatrixadmin",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash.png",
@@ -17,34 +17,16 @@
       "web"
     ],
     "android": {
-      "package": "com.finmatrix",
+      "package": "com.finmatrix.admin",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
-      ]
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": [
-      "expo-font",
-      "@react-native-community/datetimepicker",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "FinMatrix needs location access to track your delivery route.",
-          "locationWhenInUsePermission": "FinMatrix needs location access to track your delivery route.",
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
-        }
-      ]
-    ]
+    "plugins": []
   }
 }

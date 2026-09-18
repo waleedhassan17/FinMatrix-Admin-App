@@ -235,7 +235,10 @@ const appReducer: typeof rootReducer = (state, action) => {
 };
 
 const persistConfig = {
-  key: 'finmatrix-root',
+  // Distinct from the tenant app's 'finmatrix-root'. On web the two share a
+  // localStorage origin, and rehydrating a tenant session into the console
+  // would half-authenticate it instead of failing cleanly.
+  key: 'finmatrix-admin-root',
   storage: AsyncStorage,
   // DO NOT add `userManagement` here. It holds the one-time reveal of a
   // password the owner just issued to a staff member or rider, and persisting

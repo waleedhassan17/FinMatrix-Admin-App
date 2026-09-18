@@ -9,9 +9,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Storage Keys ───────────────────────────────────
-const ACCESS_TOKEN_KEY = '@finmatrix/accessToken';
-const REFRESH_TOKEN_KEY = '@finmatrix/refreshToken';
-const COMPANY_ID_KEY = '@finmatrix/companyId';
+// Namespaced away from the tenant app's '@finmatrix/*'. On web the two apps
+// can share a localStorage origin, and a tenant token read into the console's
+// session produces a baffling half-authenticated state rather than a clean
+// rejection — so the two must never be able to see each other's keys.
+const ACCESS_TOKEN_KEY = '@finmatrix-admin/accessToken';
+const REFRESH_TOKEN_KEY = '@finmatrix-admin/refreshToken';
+const COMPANY_ID_KEY = '@finmatrix-admin/companyId';
 
 // ─── Token Helpers ──────────────────────────────────
 export const setTokens = async (accessToken: string, refreshToken: string) => {

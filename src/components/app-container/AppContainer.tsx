@@ -54,10 +54,13 @@ const { colors } = THEME;
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 // ─── Deep linking (Stage 1) ──────────────────────────
-// finmatrix://verify-email?token=...  → Email verification screen
-// finmatrix://reset-password          → Forgot-password (OTP) screen
+// finmatrixadmin://verify-email?token=...  → Email verification screen
+// finmatrixadmin://reset-password          → Forgot-password (OTP) screen
+// The scheme differs from the tenant app's: two installed APKs both claiming
+// `finmatrix://` would put an Android disambiguation chooser in front of every
+// reset-password link.
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['finmatrix://'],
+  prefixes: ['finmatrixadmin://'],
   config: {
     screens: {
       EmailVerification: 'verify-email',
