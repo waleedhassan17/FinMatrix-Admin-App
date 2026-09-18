@@ -33,7 +33,9 @@ const { colors, radius, shadows, spacing, typography } = THEME;
 // Real destinations for the support links.
 const DOCS_URL = 'https://github.com/waleedhassan17/FinMatrix';
 const SUPPORT_EMAIL = 'waleedhassansfd@gmail.com';
-const NOTIF_PREFS_KEY = 'superadmin.notifPrefs';
+// Namespaced like the session keys in utils/storageUtils, and for the same
+// reason: on web the console and the tenant app can share a localStorage origin.
+const NOTIF_PREFS_KEY = '@finmatrix-admin/notifPrefs';
 
 // ── Reusable Section ──────────────────────────────────
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (

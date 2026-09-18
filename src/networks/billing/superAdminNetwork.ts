@@ -1,6 +1,12 @@
 // ═══════════════════════════════════════════════════════
-// FinMatrix — Super Admin Network (Production)
+// FinMatrix Admin — Super Admin Network (Production)
 // ═══════════════════════════════════════════════════════
+// Everything under /super-admin. Two tenant-facing functions that used to live
+// here are gone: getPublicPlansAPI (the plan chooser shown during signup) and
+// selfSubscribeAPI, which posted to /companies/subscribe and was never a
+// super-admin endpoint at all. Both belong to the tenant app's
+// SubscriptionSelect screen — and are the reason this module cannot simply be
+// deleted from FinMatrix when the console screens are removed there.
 
 import { api, extractErrorMessage } from '../network/apiHelpers';
 
@@ -56,15 +62,6 @@ export const updateCompanyStatusAPI = async (
 export const getSubscriptionPlansAPI = async (): Promise<any> => {
   try {
     const res = await api.get('/super-admin/plans');
-    return res.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
-
-export const getPublicPlansAPI = async (): Promise<any> => {
-  try {
-    const res = await api.get('/super-admin/plans/public');
     return res.data;
   } catch (e: any) {
     throw new Error(extractErrorMessage(e));
@@ -136,15 +133,6 @@ export const assignSubscriptionAPI = async (data: {
 }): Promise<any> => {
   try {
     const res = await api.post('/super-admin/subscriptions', data);
-    return res.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
-
-export const selfSubscribeAPI = async (planId: string): Promise<any> => {
-  try {
-    const res = await api.post('/companies/subscribe', { planId });
     return res.data;
   } catch (e: any) {
     throw new Error(extractErrorMessage(e));

@@ -20,19 +20,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOTS = ['src/screens', 'src/components', 'src/Custom-Components', 'src/navigators'];
+const ROOTS = ['src/screens', 'src/components', 'src/navigators'];
 
 const ALLOWED = new Map([
   // Token definitions: the one place each value is written down.
   ['src/theme/theme.ts', 'defines the palette and type scale'],
   ['src/theme/index.ts', 'legacy token set, still consumed by older screens'],
-  ['src/utils/deliveryTheme.ts', 'DP_BRAND: the delivery surface palette'],
-  ['src/components/auth/authTokens.ts', 'AUTH: the onboarding flow palette'],
-  // Deliberate exceptions, commented at the line where they sit.
-  [
-    'src/screens/Delivery/Personnel/DeliveryComplete/DeliveryCompleteScreen.tsx',
-    'confetti is meant to be off-system',
-  ],
+  ['src/components/auth/authTokens.ts', 'AUTH: the sign-in flow palette'],
 ]);
 
 const RULES = [

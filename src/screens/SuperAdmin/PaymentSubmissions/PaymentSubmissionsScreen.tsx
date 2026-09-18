@@ -132,7 +132,7 @@ const PaymentSubmissionsScreen: React.FC = () => {
     setShotUri(null);
     setShotLoading(true);
     try {
-      setShotUri(await downloadSubmissionScreenshot(id, 'admin'));
+      setShotUri(await downloadSubmissionScreenshot(id));
     } catch (e: any) {
       setShotOpen(false);
       notify('Screenshot unavailable', e?.message ?? 'Please try again.');

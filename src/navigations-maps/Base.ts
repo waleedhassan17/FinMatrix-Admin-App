@@ -1,86 +1,17 @@
+// ═══════════════════════════════════════════════════════
+// FinMatrix Admin — Route names
+// ═══════════════════════════════════════════════════════
+// The one place a route name is written down. The tenant app's ROUTES carried
+// ~85 entries covering every stack; the console has two screens outside its
+// own tab navigator, whose route names are typed by RootStackParamList.
+//
+// The console's six tabs are NOT listed here. They are declared by
+// SuperAdminNavigator and typed by SuperAdminTabParamList, and the dashboard
+// navigates to them with string literals cast through `any` — so a rename
+// there compiles and crashes. Leave those tab names alone.
 export const ROUTES = {
-  SPLASH: 'Splash',
-  ONBOARDING: 'Onboarding',
-  ROLE_SELECTION: 'RoleSelection',
   SIGN_IN: 'SignIn',
-  SIGN_UP: 'SignUp',
   FORGOT_PASSWORD: 'ForgotPassword',
-  EMAIL_VERIFICATION: 'EmailVerification',
-  COMPANY_SETUP: 'CompanySetup',
-  COMPANY_TYPE_SELECT: 'CompanyTypeSelect',
-  CREATE_COMPANY: 'CreateCompany',
-  JOIN_COMPANY: 'JoinCompany',
-  DELIVERY_ONBOARDING: 'DeliveryOnboarding',
-
-  // Admin Tab Navigator
-  ADMIN_TABS: 'AdminTabs',
-  ADMIN_DASHBOARD: 'AdminDashboard',
-  TRANSACTIONS_HUB: 'TransactionsHub',
-  REPORTS_HUB: 'ReportsHub',
-  INVENTORY_HUB: 'InventoryHub',
-  MORE_HUB: 'MoreHub',
-
-  // Admin Stacks (tab-level)
-  DASHBOARD_STACK: 'DashboardStack',
-  TRANSACTIONS_STACK: 'TransactionsStack',
-  REPORTS_STACK: 'ReportsStack',
-  INVENTORY_STACK: 'InventoryStack',
-  MORE_STACK: 'MoreStack',
-
-  // Delivery Tab Navigator
-  DELIVERY_TABS: 'DeliveryTabs',
-  DP_DASHBOARD: 'DPDashboard',
-  DP_DELIVERIES: 'DPDeliveries',
-  DP_INVENTORY: 'DPInventory',
-  DP_PROFILE: 'DPProfile',
-
-  // Delivery Stacks (tab-level)
-  DP_DASHBOARD_STACK: 'DPDashboardStack',
-  DP_DELIVERIES_STACK: 'DPDeliveriesStack',
-  DP_INVENTORY_STACK: 'DPInventoryStack',
-  DP_PROFILE_STACK: 'DPProfileStack',
-
-  // Shared / nested
-  DELIVERY_PERSONNEL_LIST: 'DeliveryPersonnelList',
-  ADD_DELIVERY_PERSONNEL: 'AddDeliveryPersonnel',
-  DELIVERY_PERSONNEL_DETAIL: 'DeliveryPersonnelDetail',
-  ASSIGN_DELIVERIES: 'AssignDeliveries',
-  CREATE_DELIVERY: 'CreateDelivery',
-  ASSIGN_WORK: 'AssignWork',
-  DELIVERY_MONITOR: 'DeliveryMonitor',
-  ADMIN_DELIVERY_DETAIL: 'AdminDeliveryDetail',
-  COA_LIST: 'COAList',
-  INVENTORY_LIST: 'InventoryList',
-  INVENTORY_FORM: 'InventoryForm',
-  INVENTORY_DETAIL: 'InventoryDetail',
-  ADJUSTMENT: 'Adjustment',
-  AGENCY_LIST: 'AgencyList',
-  AGENCY_DETAIL: 'AgencyDetail',
-  AGENCY_FORM: 'AgencyForm',
-  AGENCY_INVENTORY_SYNC: 'AgencyInventorySync',
-  CUSTOMER_LIST: 'CustomerList',
-  CUSTOMER_DETAIL: 'CustomerDetail',
-  CUSTOMER_FORM: 'CustomerForm',
-  INVOICE_LIST: 'InvoiceList',
-  INVOICE_FORM: 'InvoiceForm',
-  INVOICE_DETAIL: 'InvoiceDetail',
-  RECEIVE_PAYMENT: 'ReceivePayment',
-  VENDOR_LIST: 'VendorList',
-  VENDOR_DETAIL: 'VendorDetail',
-  VENDOR_FORM: 'VendorForm',
-  BILL_LIST: 'BillList',
-  BILL_FORM: 'BillForm',
-  BILL_DETAIL: 'BillDetail',
-  PAY_BILLS: 'PayBills',
-  PO_LIST: 'POList',
-  PO_FORM: 'POForm',
-  PO_DETAIL: 'PODetail',
-
-  // Super Admin Navigator
-  SUPER_ADMIN_TABS: 'SuperAdminTabs',
-  SUPER_ADMIN_DASHBOARD: 'SuperAdminDashboard',
-  COMPANY_MANAGEMENT: 'CompanyManagement',
-  COMPANY_DETAIL: 'CompanyDetail',
-  SUBSCRIPTION_PLANS: 'SubscriptionPlans',
-  SUPER_ADMIN_SETTINGS: 'SuperAdminSettings',
 } as const;
+
+export type RouteName = typeof ROUTES[keyof typeof ROUTES];

@@ -1,98 +1,110 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# FinMatrix Admin
 
-# Getting Started
+The FinMatrix **platform console** — the app the platform owner uses to approve
+companies, review payment submissions, and watch revenue. It is a separate app
+from FinMatrix itself, which is the product customers use to run their business.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Extracted from [FinMatrix](https://github.com/waleedhassan17/FinMatrix) at commit
+`b8451e3`, where the console shipped inside the tenant bundle behind a
+`user.role === 'super_admin'` branch.
 
-## Step 1: Start Metro
+| | |
+|---|---|
+| Platforms | Android, web |
+| Package | `com.finmatrix.admin` |
+| Deep link scheme | `finmatrixadmin://` |
+| Expo SDK | 54 |
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## Running it
 
-To start the Metro dev server, run the following command from the root of your React Native project:
-
-```sh
-# Using npm
-npm start
-
-# OR using Yarn
-yarn start
+```bash
+npm install
+npm run web          # fastest loop — no Gradle
+npm run android      # device/emulator; needs the Android SDK
 ```
 
-## Step 2: Build and run your app
+`android/` is **not** checked in. It is regenerated from `app.json` by
+`npx expo prebuild --platform android --clean`, which `npm run android` does for
+you. Change the package name, scheme, permissions or plugins in `app.json` — never
+in `android/`, because the next prebuild overwrites it.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## Which API it talks to
 
-### Android
+`src/networks/network/apiHelpers.ts`:
 
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+```ts
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL?.trim() ||
+  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
 ```
 
-### iOS
+> **The default is production.** Approving or rejecting a payment submission there
+> is a real, irreversible action against a real customer. Point somewhere else for
+> anything destructive:
+>
+> ```bash
+> EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1 npm run web
+> EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api/v1 npm run android   # emulator
+> ```
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+The backend is a separate NestJS repo. A web deployment of this console needs its
+origin added to the backend's `CORS_ORIGINS`.
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+## Signing in
 
-```sh
-bundle install
+Sign-in posts to `/auth/signin` with `portal: 'admin'` — the door the server
+admits both company owners and the platform console through. Because an owner's
+credentials therefore succeed here, `SignInScreen` checks the resolved role and
+rejects anything that is not `super_admin`, clearing the tokens before the user
+reaches Redux. `NotAuthorizedScreen` catches the same case for a session restored
+from disk. The server's `@Roles` guards remain the real boundary; both checks are
+UX.
+
+## Layout
+
+```
+src/
+  screens/SuperAdmin/     the six console tabs + its Redux slice
+  screens/Auth/           SignIn, ForgotPassword — the entire unauthenticated app
+  navigators/             SuperAdminNavigator (tabs), BaseNavigator (signed out)
+  components/admin/       AdminUI — the shapes the console repeats
+  networks/               axios client, auth, /super-admin, /admin/payment-submissions
+  theme/                  the design system; self-contained, no project imports
 ```
 
-Then, and every time you update your native dependencies, run:
+`src/components/app-container/AppContainer.tsx` is the shell: session bootstrap,
+the signed-in/signed-out switch, deep linking, splash, toasts.
 
-```sh
-bundle exec pod install
+### Two things that will bite
+
+- **The dashboard's quick actions navigate with `navigate('Companies' as any)`.**
+  Six call sites, all cast through `any`, so renaming a tab in
+  `SuperAdminNavigator` compiles cleanly and crashes at runtime. Don't rename the
+  six tab route names; click every tile after touching that screen.
+- **`src/types/index.ts` is inherited and mostly dead** — ~60 domain interfaces for
+  invoices, payroll and the rest, kept because they are erased at build time and
+  deleting them is churn. `RootStackParamList` at the bottom is the exception: it
+  is the live navigation contract and is kept honest.
+
+## Checks
+
+```bash
+npx tsc --noEmit      # hard gate
+npm run check:tokens  # hard gate — bans hardcoded fontSize/fontWeight/hex colour
+npx jest              # hard gate
+npm run lint          # informational; the inherited codebase has pre-existing errors
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+CI (`.github/workflows/ci.yml`) runs all four on push and PR to `main`.
 
-```sh
-# Using npm
-npm run ios
+## Known drift
 
-# OR using Yarn
-yarn ios
-```
+`expo@54.0.36` and `expo-file-system@19.0.23` are one patch behind what the SDK
+expects (`npx expo install --check` reports it). Inherited from the source repo's
+lockfile and left pinned so the console behaves identically to the app it was
+extracted from. Bump deliberately, not incidentally.
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
-# FinMatrix
+`react-native-reanimated` and `react-native-worklets` are dependencies with no
+imports. They are kept because dropping the package while leaving
+`react-native-reanimated/plugin` in `babel.config.js` kills Metro at startup, and
+nothing forces the removal.
