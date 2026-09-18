@@ -1,4 +1,3 @@
-import 'react-native-get-random-values';
 import 'react-native-gesture-handler';
 import { registerRootComponent } from 'expo';
 // No locationService import here. The tenant app registers a background
