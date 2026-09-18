@@ -138,7 +138,10 @@ describe('PaymentSubmissionsScreen — free-trial rows', () => {
     expect(text).not.toContain('Rs 0');
     expect(text).not.toContain('Amount');
     expect(text).not.toContain('View transfer screenshot');
-  });
+    // 15s, not the 5s default: this case mounts the heaviest row and timed out
+    // intermittently on CI runners. Carried over from FinMatrix, where the same
+    // suite lived before the console moved here.
+  }, 15000);
 
   it('still renders a payment row as a payment', async () => {
     const tree = await mount([PAYMENT]);
