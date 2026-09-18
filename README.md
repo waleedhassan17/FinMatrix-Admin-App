@@ -108,3 +108,4 @@ extracted from. Bump deliberately, not incidentally.
 imports. They are kept because dropping the package while leaving
 `react-native-reanimated/plugin` in `babel.config.js` kills Metro at startup, and
 nothing forces the removal.
+# FinMatrix-Admin-App
