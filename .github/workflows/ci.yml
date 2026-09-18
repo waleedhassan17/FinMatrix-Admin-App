@@ -1,0 +1,55 @@
+name: CI
+
+# The app had no CI at all, so a type error or a payload the API rejects only
+# showed up when someone ran a build by hand. The cost-method bug that made
+# every inventory create fail with a 400 was exactly this shape: a value the
+# app sent that the API had never accepted, with nothing checking the two
+# agreed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # The hard gate. Clean today, and the class of check that would have
+      # caught the cost-method mismatch.
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # A hard gate, unlike lint below. It passes today, so anything it catches
+      # is a regression rather than backlog -- which is the only way a style
+      # check stays worth reading. See scripts/check-design-tokens.js.
+      - name: Design tokens
+        run: npm run check:tokens
+
+      # Informational for now: the codebase carries ~285 pre-existing lint
+      # errors and ~1125 warnings. Failing the build on them from day one
+      # would make this job noise that everyone learns to ignore. Burn the
+      # backlog down, then drop continue-on-error and make it a real gate.
+      - name: Lint (informational)
+        run: npm run lint
+        continue-on-error: true
+
+      # A real gate now: 11 suites covering the capability matrix, the staff
+      # route allow-list, the serializers, two redux slices and the cross-tab
+      # navigation invariant. --passWithNoTests is kept only so a checkout that
+      # legitimately has none does not fail here.
+      #
+      # Note the type-check above DOES cover these: the "__tests__" entry in
+      # tsconfig's exclude resolves to ./__tests__ at the repo root, not to the
+      # nested src/**/__tests__ dirs, so a type error in a spec fails the build.
+      - name: Unit tests
+        run: npx jest --passWithNoTests

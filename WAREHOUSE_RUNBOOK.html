@@ -1,0 +1,1591 @@
+<title>Warehouse Ledger Runbook</title>
+<style>
+  :root {
+    --paper:      #F7F8F7;
+    --surface:    #FFFFFF;
+    --surface-2:  #EFF2F0;
+    --ink:        #141F1B;
+    --ink-2:      #3E4B46;
+    --ink-3:      #6B7873;
+    --rule:       #D6DDD9;
+    --rule-soft:  #E6EBE8;
+    --green:      #0E6B4F;
+    --green-soft: #E4EFE9;
+    --amber:      #8A5A0B;
+    --amber-soft: #F6EEDD;
+    --rust:       #9E3B2C;
+    --rust-soft:  #F7E7E3;
+    --shadow:     0 1px 2px rgba(20,31,27,.05), 0 8px 24px -16px rgba(20,31,27,.25);
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101714;
+      --surface:    #16201C;
+      --surface-2:  #1D2925;
+      --ink:        #E8EEEB;
+      --ink-2:      #B4C0BB;
+      --ink-3:      #8A9994;
+      --rule:       #2C3A35;
+      --rule-soft:  #232F2B;
+      --green:      #5FC79E;
+      --green-soft: #172E26;
+      --amber:      #D9A652;
+      --amber-soft: #2C2418;
+      --rust:       #E08872;
+      --rust-soft:  #2E1D19;
+      --shadow:     0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #101714;
+    --surface:    #16201C;
+    --surface-2:  #1D2925;
+    --ink:        #E8EEEB;
+    --ink-2:      #B4C0BB;
+    --ink-3:      #8A9994;
+    --rule:       #2C3A35;
+    --rule-soft:  #232F2B;
+    --green:      #5FC79E;
+    --green-soft: #172E26;
+    --amber:      #D9A652;
+    --amber-soft: #2C2418;
+    --rust:       #E08872;
+    --rust-soft:  #2E1D19;
+    --shadow:     0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 56px;
+  }
+
+  /* ── Masthead ─────────────────────────────── */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 64px 0 32px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin: 0 0 18px;
+  }
+  .masthead h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-family: var(--serif);
+    font-size: clamp(1.05rem, 2vw, 1.25rem);
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  .creed {
+    grid-column: 1 / -1;
+    margin: 32px 0 0;
+    padding: 20px 24px;
+    background: var(--green-soft);
+    border-left: 3px solid var(--green);
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .creed strong { color: var(--green); }
+
+  /* ── Nav rail ─────────────────────────────── */
+  nav.toc {
+    grid-column: 1 / -1;
+    margin: 40px 0 0;
+    padding: 22px 24px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+  nav.toc h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 14px;
+    font-weight: 600;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+  nav.toc a {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 5px 0;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 14px;
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc a:hover { color: var(--green); }
+  nav.toc .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    min-width: 20px;
+    flex: none;
+  }
+
+  main { grid-column: 1 / -1; }
+
+  @media (min-width: 1024px) {
+    .wrap { grid-template-columns: 232px minmax(0, 1fr); }
+    .masthead, .creed { grid-column: 1 / -1; }
+    nav.toc {
+      grid-column: 1;
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      background: transparent;
+      border: 0;
+      border-right: 1px solid var(--rule);
+      border-radius: 0;
+      padding: 8px 20px 8px 0;
+      margin-top: 56px;
+    }
+    main { grid-column: 2; margin-top: 56px; }
+  }
+
+  /* ── Sections ─────────────────────────────── */
+  section { scroll-margin-top: 24px; }
+  section + section { margin-top: 64px; }
+
+  .part-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 28px;
+  }
+  .part-head .k {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    letter-spacing: .1em;
+    flex: none;
+  }
+  .part-head h2 {
+    font-family: var(--serif);
+    font-size: clamp(1.5rem, 3.4vw, 2rem);
+    font-weight: 600;
+    letter-spacing: -.012em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--serif);
+    font-size: 1.32rem;
+    font-weight: 600;
+    letter-spacing: -.008em;
+    margin: 44px 0 12px;
+    text-wrap: balance;
+  }
+  h4 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--green);
+    font-weight: 600;
+    margin: 26px 0 8px;
+  }
+
+  p { margin: 0 0 15px; max-width: 72ch; }
+  ul, ol { margin: 0 0 15px; padding-left: 22px; max-width: 72ch; }
+  li { margin-bottom: 6px; }
+  li > ul, li > ol { margin-top: 6px; }
+  strong { font-weight: 650; color: var(--ink); }
+  a { color: var(--green); text-underline-offset: 2px; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .87em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 2px;
+    color: var(--ink);
+  }
+
+  /* ── Step cards ───────────────────────────── */
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+    padding: 26px 28px;
+    margin: 28px 0;
+  }
+  .step > :first-child { margin-top: 0; }
+  .step > :last-child { margin-bottom: 0; }
+  .step-id {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: var(--green);
+    background: var(--green-soft);
+    padding: 3px 9px;
+    border-radius: 2px;
+    margin-bottom: 10px;
+  }
+  .step h3 { margin-top: 0; }
+
+  /* ── Journal entry block ──────────────────── */
+  .je {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    background: var(--surface-2);
+    border-left: 3px solid var(--green);
+    padding: 14px 18px;
+    margin: 0 0 16px;
+    overflow-x: auto;
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .je.flow { white-space: pre; font-size: 12px; line-height: 1.6; }
+
+  /* ── Callouts ─────────────────────────────── */
+  .flag, .note, .gap {
+    padding: 14px 18px;
+    margin: 0 0 16px;
+    border-left: 3px solid;
+    font-size: 15px;
+  }
+  .flag > :last-child, .note > :last-child, .gap > :last-child { margin-bottom: 0; }
+  .flag { background: var(--amber-soft); border-color: var(--amber); }
+  .flag h4 { color: var(--amber); margin-top: 0; }
+  .note { background: var(--surface-2); border-color: var(--ink-3); }
+  .note h4 { color: var(--ink-3); margin-top: 0; }
+  .gap { background: var(--rust-soft); border-color: var(--rust); }
+  .gap h4 { color: var(--rust); margin-top: 0; }
+
+  /* ── Tables ───────────────────────────────── */
+  .tw { overflow-x: auto; margin: 0 0 18px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 420px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 14px 9px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td code { background: transparent; padding: 0; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .num { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+
+  /* ── Checklist ────────────────────────────── */
+  .check { list-style: none; padding: 0; max-width: 72ch; }
+  .check li {
+    padding-left: 30px;
+    position: relative;
+    margin-bottom: 10px;
+    border-bottom: 1px dotted var(--rule);
+    padding-bottom: 10px;
+  }
+  .check li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 5px;
+    width: 15px; height: 15px;
+    border: 1.5px solid var(--green);
+    border-radius: 2px;
+  }
+
+  /* ── Key-figure strip ─────────────────────── */
+  .figs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin: 0 0 20px;
+  }
+  .fig { background: var(--surface); padding: 16px 18px; }
+  .fig .lbl {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .fig .val {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+    display: block;
+    line-height: 1.2;
+  }
+  .fig .sub { font-size: 13px; color: var(--ink-2); display: block; margin-top: 5px; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 36px 0;
+  }
+
+  footer {
+    grid-column: 1 / -1;
+    margin-top: 72px;
+    padding-top: 22px;
+    border-top: 2px solid var(--ink);
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+
+  a:focus-visible, nav.toc a:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">FinMatrix · Warehouse Build · 15 Aug 2026</p>
+  <h1>Warehouse Ledger Runbook</h1>
+  <p class="standfirst">Every feature of the warehouse build, driven end to end — with the concept behind it, the mechanism inside it, and the exact number that must move in the ledger when it works.</p>
+  <div class="meta">
+    <span><b>For</b> testers · auditors · new team members · demo operators</span>
+    <span><b>Build</b> warehouse-only</span>
+    <span><b>Time</b> ~2–3 hours, two devices</span>
+  </div>
+</header>
+
+<div class="creed">
+  <strong>The one rule.</strong> A feature is not “working” because the screen looked right. It is working when the <strong>ledger</strong> proves it. Every test below names the report to open and the number that must move.
+</div>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#a"><span class="k">A</span><span>Before you start</span></a></li>
+    <li><a href="#b"><span class="k">B</span><span>The lifecycle</span></a></li>
+    <li><a href="#c"><span class="k">C</span><span>The test script</span></a></li>
+    <li><a href="#c1"><span class="k">C1</span><span>Master data</span></a></li>
+    <li><a href="#c2"><span class="k">C2</span><span>Purchase cycle</span></a></li>
+    <li><a href="#c3"><span class="k">C3</span><span>Riders</span></a></li>
+    <li><a href="#c4"><span class="k">C4</span><span>Cash sale loop</span></a></li>
+    <li><a href="#c5"><span class="k">C5</span><span>Credit sale</span></a></li>
+    <li><a href="#c6"><span class="k">C6</span><span>Rejection</span></a></li>
+    <li><a href="#c7"><span class="k">C7</span><span>Controls</span></a></li>
+    <li><a href="#c8"><span class="k">C8</span><span>Credit memo</span></a></li>
+    <li><a href="#c9"><span class="k">C9</span><span>Vendor credit</span></a></li>
+    <li><a href="#c10"><span class="k">C10</span><span>Pre-paid</span></a></li>
+    <li><a href="#c11"><span class="k">C11</span><span>Stock adjustment</span></a></li>
+    <li><a href="#c12"><span class="k">C12</span><span>Physical count</span></a></li>
+    <li><a href="#c13"><span class="k">C13</span><span>Partial delivery</span></a></li>
+    <li><a href="#c14"><span class="k">C14</span><span>Reassign &amp; cancel</span></a></li>
+    <li><a href="#d"><span class="k">D</span><span>Reconciliation</span></a></li>
+    <li><a href="#e"><span class="k">E</span><span>Security</span></a></li>
+    <li><a href="#f"><span class="k">F</span><span>Everything else</span></a></li>
+    <li><a href="#g"><span class="k">G</span><span>Known gaps</span></a></li>
+    <li><a href="#h"><span class="k">H</span><span>Sign-off</span></a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ══════════ PART A ══════════ -->
+<section id="a">
+  <div class="part-head"><span class="k">PART A</span><h2>Before you start</h2></div>
+
+  <h3>What FinMatrix actually is</h3>
+  <p>FinMatrix is a <strong>double-entry accounting system with a warehouse and a delivery fleet bolted onto the same ledger</strong>. That last part is what makes it different from a normal stock app.</p>
+  <p>In a normal stock app, “delivered” is a status flag. In FinMatrix, every physical event — receiving goods, loading a van, handing a box to a customer, taking a return — writes a <strong>journal entry</strong>: two or more lines, debits equal to credits, permanently changing the financial statements. Nothing is ever edited or deleted; corrections post <em>offsetting</em> entries so the audit trail survives.</p>
+  <p>So testing this app means testing two things at once: <strong>did the operation work</strong> (the van got assigned, the photo uploaded), and <strong>did the books move correctly</strong> (inventory dropped, the right account was hit, the totals balance). This runbook always tests both.</p>
+
+  <h3>Logins</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Role</th><th>Email</th><th>Password</th><th>Sees</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Warehouse admin</strong></td><td><code>warehouse@gmail.com</code></td><td><code>123456</code></td><td>The full app</td></tr>
+      <tr><td>Rider 1 · Saim Raza</td><td><code>rider1@warehouseco.com</code></td><td><code>123456</code></td><td>Rider app only</td></tr>
+      <tr><td>Rider 2 · Haseeb Ali</td><td><code>rider2@warehouseco.com</code></td><td><code>123456</code></td><td>Rider app only</td></tr>
+      <tr><td>Super-admin</td><td><code>waleedhassansfd@gmail.com</code></td><td><code>Waleed@104</code> (prod)<br><code>123456</code> (local QA)</td><td>Approvals, payments, overrides</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>You need two devices</strong> (or a device plus emulator/web) to test the delivery flow properly — one admin, one rider. Logging out and back in works, it is just slower.</p>
+
+  <h3>Two apps in one binary</h3>
+  <p>There is no separate rider download. The same app mounts a different interface based on the signed-in user’s role.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Role</th><th>Interface</th><th>Bottom tabs</th></tr></thead>
+    <tbody>
+      <tr><td>Company admin</td><td>Admin</td><td>Dashboard · Transactions · Reports · Inventory · More</td></tr>
+      <tr><td>Rider (<code>delivery</code>)</td><td>Rider</td><td>Dashboard · Deliveries · Inventory · Profile</td></tr>
+      <tr><td>Platform super-admin</td><td>Super-admin</td><td>Approvals, payments, overrides</td></tr>
+    </tbody>
+  </table></div>
+  <p>A rider <strong>cannot navigate to an accounting screen</strong> — those routes are not registered in their navigator at all, and the server returns 403 even for a direct request. You verify both directions in Part E.</p>
+  <div class="note">
+    <h4>On tiers</h4>
+    <p>This build ships warehouse-only: every new company registers as <code>warehouse</code> and every admin gets the full navigator. The small-business and large-organisation tier code still exists but is switched off. Older scripts saying “warehouse has everything the other tiers have” are still true — there just aren’t other tiers to compare against right now.</p>
+  </div>
+
+  <h3>Where everything lives</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Admin tab</th><th>Contains</th></tr></thead>
+    <tbody>
+      <tr><td>Dashboard</td><td>KPIs, charts, quick actions, global search</td></tr>
+      <tr><td>Transactions</td><td>Estimates · Sales Orders · Invoices · Receive Payments · Credit Memos · Bills · Pay Bills · <strong>Purchase Orders</strong> · Vendor Credits · General Journal</td></tr>
+      <tr><td>Reports</td><td>P&amp;L · Balance Sheet · Trial Balance · Cash Flow · General Ledger · Budgets · Analytics · A/R Aging · <strong>Inventory Valuation</strong> · <strong>Delivery Daily &amp; Performance</strong></td></tr>
+      <tr><td>Inventory</td><td>Item list · Add/Edit · Detail · Adjustment · Physical Count · Stock Transfer</td></tr>
+      <tr><td>More</td><td>Chart of Accounts · Bank Reconciliation · Customers · Vendors · Employees &amp; Payroll · Tax · <strong>Delivery Management</strong> · <strong>Delivery Personnel</strong> · <strong>Warehouse Agencies</strong> · Settings</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Delivery Management</strong> is the operations hub — a three-tab screen:</p>
+  <div class="tw"><table>
+    <thead><tr><th>Tab</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Assign</td><td>Unassigned deliveries with checkboxes → <em>Assign Selected (n)</em> → pick a rider. Links to the full Create Delivery form and the three-panel Assign Work screen.</td></tr>
+      <tr><td>Monitor</td><td>Live status counts and active deliveries → the full Delivery Monitor (map, filters, sort).</td></tr>
+      <tr><td>Approvals</td><td><strong>Open Inventory Approval Queue (n pending)</strong> — where deliveries become sales. Also lists failed/returned deliveries.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The five accounts you must understand</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Account</th><th>Type</th><th>Plain English</th><th>Goes up</th><th>Goes down</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Inventory</strong></td><td>Asset</td><td>Stock on your shelves</td><td>Receive a PO; customer return; rejected delivery</td><td>Load a van; return to supplier</td></tr>
+      <tr><td><strong>GRNI</strong></td><td>Liability</td><td>“We have the goods, no bill yet”</td><td>Receive a PO</td><td>Vendor bill arrives</td></tr>
+      <tr><td><strong>Goods in Transit</strong></td><td>Asset</td><td>Stock on a van, not yet sold</td><td>Delivery assigned</td><td>Approved or rejected</td></tr>
+      <tr><td><strong>COGS</strong></td><td>Expense</td><td>What sold goods cost you</td><td>Delivery approved</td><td>Customer return credited</td></tr>
+      <tr><td><strong>Sales</strong></td><td>Income</td><td>What you charged</td><td>Delivery approved</td><td>Credit memo issued</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Three ideas do all the work</h4>
+  <p><strong>① GRNI is a clearing account.</strong> Goods and invoices arrive at different times; GRNI holds the gap. Receive → up. Bill → back to zero. <strong>If GRNI isn’t zero after a complete purchase cycle, something was received twice, billed twice, or never billed.</strong> That single number is your purchasing integrity check.</p>
+  <p><strong>② Goods in Transit is the same trick, for the van.</strong> Stock that has left the building isn’t on your shelves, but isn’t sold either — you still own it. Assign → up. Approve or reject → back to zero. <strong>If it isn’t zero for a finished delivery, stock has vanished from your books.</strong></p>
+  <p><strong>③ Revenue is recognised at approval, not at dispatch.</strong> Putting a box on a van is not a sale. This is the most important accounting rule in the app, and step C4 exists to prove it.</p>
+
+  <h3>The snapshot-then-delta method</h3>
+  <p>Warehouse Co is a seeded demo company with existing balances. You do <strong>not</strong> need to know them. Instead: snapshot now, work the script, check the <em>change</em>, then confirm <code>ending = snapshot + total delta</code>. Any mismatch is a bug.</p>
+
+  <h4>Step 0 — fill this in before doing anything else</h4>
+  <div class="tw"><table>
+    <thead><tr><th>Account</th><th>Balance right now</th></tr></thead>
+    <tbody>
+      <tr><td>Bank</td><td></td></tr>
+      <tr><td>Cash</td><td></td></tr>
+      <tr><td>Accounts Receivable</td><td></td></tr>
+      <tr><td>Inventory</td><td></td></tr>
+      <tr><td>Goods in Transit</td><td></td></tr>
+      <tr><td>GRNI</td><td></td></tr>
+      <tr><td>Accounts Payable</td><td></td></tr>
+      <tr><td>GST / Tax Payable</td><td></td></tr>
+      <tr><td>Sales / Revenue</td><td></td></tr>
+      <tr><td>COGS</td><td></td></tr>
+      <tr><td><strong>Inventory Valuation total</strong></td><td></td></tr>
+      <tr><td><strong>Trial Balance — debits</strong></td><td></td></tr>
+      <tr><td><strong>Trial Balance — credits</strong></td><td></td></tr>
+    </tbody>
+  </table></div>
+  <p>Also note on-hand quantity of <code>SKU-OIL</code> and <code>SKU-FLR</code> — both should be <strong>0</strong> (they don’t exist yet).</p>
+  <div class="flag">
+    <h4>Stop condition</h4>
+    <p>If total debits ≠ total credits <strong>before you start</strong>, stop. The ledger is already broken and nothing you test afterwards will mean anything.</p>
+  </div>
+</section>
+
+<!-- ══════════ PART B ══════════ -->
+<section id="b">
+  <div class="part-head"><span class="k">PART B</span><h2>The warehouse lifecycle</h2></div>
+  <p>Keep this open in a second window while you work through Part C.</p>
+<div class="je flow">   SUPPLIER SIDE                                    CUSTOMER SIDE
+   ─────────────                                    ─────────────
+
+   Purchase Order  ────►  no entry (a commitment, not a transaction)
+        │
+        ▼
+   Receive Items   ────►  Dr Inventory         Cr GRNI
+        │                 (stock arrives, we owe "something")
+        ▼
+   Convert to Bill ────►  Dr GRNI              Cr Accounts Payable
+        │                 (GRNI nets to ZERO ✓ — now we owe money)
+        ▼
+   Pay Bill        ────►  Dr Accounts Payable  Cr Bank
+        │
+   ═════╪════════ stock is now sitting on your shelf ════════════
+        │
+        ▼
+   Create Delivery ────►  no entry (a plan, not a transaction)
+        │
+        ▼
+   Assign to Rider ────►  Dr Goods in Transit  Cr Inventory   (AT COST)
+        │                 + Sales Order created (non-posting)
+        │                 ⚠ NO revenue, NO COGS — nothing is sold yet
+        ▼
+   Rider delivers  ────►  no entry
+   (picked up → in         (status machine + proof photo + PAID flag;
+    transit → arrived       queues for admin approval)
+    → signed bill)
+        │
+        ▼
+   Admin APPROVES  ────►  Dr Cash *or* A/R     Cr Sales    ← revenue
+        │                 Dr COGS              Cr Goods in Transit
+        │                 (Goods in Transit nets to ZERO ✓)
+        │
+        ├── if NOT PAID ─► later: Dr Bank      Cr Accounts Receivable
+        │                 (payment only — P&L does NOT move again)
+        │
+        └── if REJECTED ─► Dr Inventory        Cr Goods in Transit
+                          (back on the shelf, no sale ever happened)
+
+   AFTER a sale is posted, a return needs a CREDIT MEMO:
+                          Dr Sales             Cr A/R (or Cash)
+                          Dr Inventory         Cr COGS
+   AFTER a purchase is billed, a return needs a VENDOR CREDIT:
+                          Dr Accounts Payable  Cr Inventory</div>
+</section>
+
+<!-- ══════════ PART C ══════════ -->
+<section id="c">
+  <div class="part-head"><span class="k">PART C</span><h2>The main test script</h2></div>
+  <p>Each step gives you the <strong>concept</strong>, <strong>how FinMatrix does it</strong>, the <strong>exact clicks and data</strong>, the <strong>expected delta</strong>, <strong>where it shows up</strong>, and the <strong>red flags</strong>.</p>
+  <p>Use the exact numbers given — they are chosen so the final reconciliation is a clean, checkable total.</p>
+
+  <!-- C1 -->
+  <div class="step" id="c1">
+    <span class="step-id">C1</span>
+    <h3>Master data — items, customer, vendor</h3>
+
+    <h4>Concept</h4>
+    <p>Items, customers and vendors are <strong>reference data</strong>, not transactions. Creating them describes the world; it doesn’t change your financial position. A brand-new item with zero stock is worth zero, so <strong>nothing posts to the ledger</strong>.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>Three non-posting registers. Inventory items carry both a <strong>unit cost</strong> (what you pay — drives Inventory value and COGS) and a <strong>selling price</strong> (what you charge — drives Revenue). Keeping those apart is what lets the app compute gross profit per delivery.</p>
+
+    <h4>Do this</h4>
+    <p><strong>1a. Two items</strong> — Inventory tab → Add Item:</p>
+    <div class="tw"><table>
+      <thead><tr><th>Field</th><th>Item 1</th><th>Item 2</th></tr></thead>
+      <tbody>
+        <tr><td>Item Name *</td><td>5L Cooking Oil</td><td>10kg Flour Bag</td></tr>
+        <tr><td>SKU *</td><td><code>SKU-OIL</code></td><td><code>SKU-FLR</code></td></tr>
+        <tr><td>Unit Cost *</td><td class="num">800</td><td class="num">1,200</td></tr>
+        <tr><td>Selling Price *</td><td class="num">1,000</td><td class="num">1,600</td></tr>
+        <tr><td>Quantity on Hand *</td><td class="num">0</td><td class="num">0</td></tr>
+        <tr><td>Reorder Point</td><td class="num">20</td><td class="num">15</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><p><strong>Leave Quantity on Hand at 0 on purpose.</strong> You’ll stock these through a Purchase Order in C2 — the accounted way. Typing an opening quantity here creates stock the ledger never paid for, which is exactly the shortcut that breaks a balance sheet.</p></div>
+    <p><strong>1b. Customer</strong> — More → Customers → Add: <code>Ahmed Store</code> · <code>ahmed@store.pk</code> · <code>0300-1112223</code>. Give it a shipping address with a city — the city sets the delivery Zone (Lahore/Gujranwala = A, Karachi/Rawalpindi = B, Islamabad/Faisalabad = C, else D).</p>
+    <p><strong>1c. Vendor</strong> — More → Vendors → Add: <code>Metro Wholesale</code> · <code>billing@metro.pk</code>.</p>
+
+    <h4>Expected result</h4>
+    <p><strong>Zero ledger movement.</strong> Trial Balance identical to your Step 0 snapshot.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Inventory tab — both items listed, on-hand 0, flagged out of stock</li>
+      <li>Reports → Inventory Valuation — both at value 0</li>
+      <li>Create Delivery screen — items appear as <code>5L Cooking Oil · stock 0</code></li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li>Any Trial Balance movement from creating master data</li>
+        <li>An item saving without a SKU, or with a duplicate SKU</li>
+        <li>Selling price silently overwriting unit cost — check the saved item detail</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C2 -->
+  <div class="step" id="c2">
+    <span class="step-id">C2</span>
+    <h3>The purchase cycle — PO → Receive → Bill</h3>
+
+    <h4>Concept</h4>
+    <p>Buying stock is <strong>three separate events</strong>, and confusing them is the classic accounting error:</p>
+    <ol>
+      <li><strong>Ordering</strong> — you promise to buy. Nothing has happened financially. <strong>No entry.</strong></li>
+      <li><strong>Receiving</strong> — the goods are physically yours. You have an asset and an obligation, but no invoice. Inventory up, <strong>GRNI</strong> up.</li>
+      <li><strong>Billing</strong> — the invoice arrives. The obligation becomes a real, dated payable. GRNI down, A/P up.</li>
+    </ol>
+    <p>This is the <strong>three-way match</strong> (order ↔ receipt ↔ invoice) — how you catch a supplier billing for 100 units when they shipped 90.</p>
+    <p><strong>The trap this avoids:</strong> if receiving <em>and</em> billing both raised Inventory, you’d count the same goods twice and your balance sheet would be inflated by the value of every unbilled receipt. GRNI exists precisely so only <em>one</em> of the two touches Inventory.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>Transactions → Purchase Orders. A PO moves <code>draft → sent → partially_received → fully_received → closed</code>. Receiving is per-line — you type the quantity actually delivered, which is what makes partial receipts and short shipments testable. “Convert to Bill” carries the received lines forward so you can’t bill for something you never received.</p>
+
+    <h4>Do this</h4>
+    <p><strong>2a.</strong> Transactions → Purchase Orders → New, vendor <code>Metro Wholesale</code>:</p>
+    <div class="tw"><table>
+      <thead><tr><th>Line</th><th>Item</th><th>Qty</th><th>Unit cost</th><th>Line total</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>5L Cooking Oil</td><td class="num">100</td><td class="num">800</td><td class="num">80,000</td></tr>
+        <tr><td>2</td><td>10kg Flour Bag</td><td class="num">50</td><td class="num">1,200</td><td class="num">60,000</td></tr>
+        <tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>140,000</strong></td></tr>
+      </tbody>
+    </table></div>
+    <p>Save as draft, then <strong>Send to Vendor</strong>.</p>
+    <p><strong>2b.</strong> Open the PO → <strong>Receive Items</strong> → full quantity on each line (100, 50) → <strong>Save Received</strong>. You should see <em>“All items have been fully received. You can now Convert to Bill.”</em></p>
+    <p><strong>2c.</strong> Tap <strong>Convert to Bill</strong> → confirm vendor and total 140,000 → save.</p>
+
+    <h4>Expected result</h4>
+    <div class="tw"><table>
+      <thead><tr><th>Step</th><th>Journal entry</th></tr></thead>
+      <tbody>
+        <tr><td>2a Create / Send</td><td><strong>none</strong></td></tr>
+        <tr><td>2b Receive</td><td><code>Dr Inventory 140,000 / Cr GRNI 140,000</code></td></tr>
+        <tr><td>2c Bill</td><td><code>Dr GRNI 140,000 / Cr Accounts Payable 140,000</code></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Running deltas:</strong> Inventory <strong>+140,000</strong> · GRNI <strong>0</strong> · Accounts Payable <strong>+140,000</strong>.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li><strong>Inventory tab</strong> — Oil 100, Flour 50, both above reorder point</li>
+      <li><strong>Inventory Valuation</strong> — total +140,000</li>
+      <li><strong>Balance Sheet</strong> — Inventory +140,000; GRNI back to opening; A/P +140,000</li>
+      <li><strong>A/P Aging</strong> — Metro Wholesale owed 140,000</li>
+      <li><strong>PO list</strong> — <code>Fully Received</code>, linked to the bill</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>Anything posting at 2a.</strong> A purchase order is a commitment, not a transaction.</li>
+        <li><strong>Inventory moving again at 2c.</strong> This is the double-count check. If Inventory is +280,000, that is critical.</li>
+        <li>GRNI not returning to its opening balance after 2c</li>
+        <li>Receiving <em>more</em> than ordered without a warning; billing before receiving</li>
+      </ul>
+    </div>
+
+    <div class="note">
+      <h4>Variant worth running — partial receipt</h4>
+      <p>Instead of 100/50, receive <strong>60 oil and 50 flour</strong>. Expect PO status <code>Partially Received</code>, Inventory +108,000, GRNI +108,000, and 40 oil still outstanding. Then receive the last 40 and confirm GRNI totals 140,000 across both receipts. This is the most common real-world case and the one most likely to be wrong.</p>
+    </div>
+  </div>
+
+  <!-- C3 -->
+  <div class="step" id="c3">
+    <span class="step-id">C3</span>
+    <h3>Delivery personnel</h3>
+
+    <h4>Concept</h4>
+    <p>A rider is not a “record” like a customer — it is a <strong>real user account with a login</strong>. That is why riders are the one thing FinMatrix meters: creating one provisions a login, a mobile session, GPS tracking, photo uploads and assignments. Customers, vendors and employees are unlimited; <strong>active riders</strong> are the plan limit (2 / 5 / 10).</p>
+    <p>Creating a rider posts <strong>nothing</strong> to the ledger.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>More → Delivery Personnel — confirm <strong>Saim Raza</strong> and <strong>Haseeb Ali</strong> exist and are <code>active</code>.</li>
+      <li>Add one to test the form: <code>Rider Test</code> · <code>+92-300-1234567</code> · password <code>123456</code> · vehicle number <code>LHR-1234</code>. Save and copy the credentials.</li>
+      <li><strong>Plan limit:</strong> keep adding until the app refuses. It must fail with a clear message naming your plan and its allowance — not a generic error, and not silently succeed.</li>
+      <li><strong>Concurrency:</strong> deactivate a rider and confirm the freed slot lets you add another. The limit counts <em>active</em> riders, not lifetime.</li>
+    </ol>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Delivery Personnel list, with live load per rider</li>
+      <li>The rider picker modal on Assign — <code>vehicle • current/max load • %</code></li>
+      <li>The new rider can log in and lands in the <strong>rider app</strong>, not the admin app</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul><li>Limit not enforced, or enforced with an unhelpful error</li><li>A new rider seeing another rider’s deliveries</li><li>A rider landing on the admin navigator</li></ul>
+    </div>
+  </div>
+
+  <!-- C4 -->
+  <div class="step" id="c4">
+    <span class="step-id">C4</span>
+    <h3>Delivery 1 — cash sale, the full loop</h3>
+    <p><strong>This is the centrepiece of the whole app.</strong> Take your time here.</p>
+
+    <h4>Concept</h4>
+    <p>A delivery is a sale that happens in <strong>two stages separated in time</strong>, and the accounting must respect the gap:</p>
+    <ul>
+      <li><strong>Stage 1 — dispatch.</strong> Goods leave the warehouse. You still own them — they’re on a van, not sold. Their <em>cost</em> moves from Inventory to Goods in Transit. <strong>No revenue.</strong> Recognising revenue here would book income for goods the customer may refuse, and your P&amp;L would improve every time you loaded a truck.</li>
+      <li><strong>Stage 2 — approval.</strong> The customer has the goods and the admin verified the proof. <em>Now</em> it’s a sale. Revenue is recognised, and the cost moves out of Goods in Transit into COGS — so revenue and its matching cost land in the same period. That’s the <strong>matching principle</strong>.</li>
+    </ul>
+
+    <h4>How FinMatrix does it</h4>
+    <p><strong>Create</strong> builds the order (non-posting). <strong>Assign</strong> creates a <strong>Sales Order</strong> (a confirmed order — still non-posting) and posts the Goods in Transit entry at <strong>cost</strong>; the success alert names the SO number and the transit value. <strong>The rider</strong> advances a strict status machine and uploads proof — nothing they do posts to the ledger, by design. <strong>The admin approves</strong> in the Inventory Approval Queue, and <em>that</em> is the posting event; the dialog states exactly what it is about to post before you confirm.</p>
+
+    <h4>Do this</h4>
+    <p><strong>4a. Create</strong> — Delivery Management → Assign → <strong>Open Full Create Delivery Form</strong>: customer <code>Ahmed Store</code>, item <code>5L Cooking Oil</code> qty <code>20</code> → Add item (20 × 1,000 = 20,000), priority High, <strong>Pre-paid sale UNCHECKED</strong> → Create Delivery.</p>
+    <p>Read the confirmation — <em>“a Sales Order is created (non-posting) and the stock moves to Goods in Transit — revenue posts only after you approve the completed delivery.”</em> That sentence is the contract this step verifies.</p>
+    <p><strong>Check now, before assigning:</strong> the Trial Balance must be completely unchanged.</p>
+    <p><strong>4b. Assign</strong> — tick the delivery → <strong>Assign Selected (1)</strong> → pick <strong>Saim Raza</strong>. The success alert should name a Sales Order number and report <code>Stock moved to Goods in Transit at cost (Rs 16,000)</code>.</p>
+    <p><strong>4c. Rider</strong> — log in as <code>rider1@warehouseco.com</code>:</p>
+    <ul>
+      <li>Deliveries → open the delivery</li>
+      <li><strong>Pick Up Items</strong> → <code>picked_up</code></li>
+      <li><strong>Start Delivery</strong> → <code>in_transit</code></li>
+      <li><strong>Mark as Arrived</strong> → <code>arrived</code></li>
+      <li><strong>Capture Signed Bill</strong> → photo, customer name in <em>Signed by</em>, choose <strong>PAID</strong> → Submit</li>
+      <li>“Sent for Admin Review” → Customer Confirm → Delivery Complete</li>
+    </ul>
+    <p><strong>Test the state machine while you’re here:</strong> try to skip a step (there is only ever one action button); double-tap the action button (must advance <em>once</em>); submit the bill photo twice (refused with <em>“Already submitted”</em>); submit with no photo / no name / no payment status (each blocked with a specific message).</p>
+    <p><strong>Check now:</strong> as admin, the Trial Balance shows <strong>only</strong> the Goods in Transit entry from 4b. The rider’s whole journey posted nothing.</p>
+    <p><strong>4d. Approve</strong> — Delivery Management → Approvals → Inventory Approval Queue. The pending request must show the <strong>PAID</strong> badge, customer, <code>Rs 20,000</code>, the hint <em>“Posts the sale (Rs 20,000) as CASH received, plus COGS.”</em>, the item table (Before / Delivered / Returned / After), the signed bill photo, and the submitted timestamp. Tap <strong>Approve</strong>, reading the confirmation dialog first.</p>
+
+    <h4>Expected result</h4>
+<div class="je">4a  Create           →  no entry
+4b  Assign           →  Dr Goods in Transit  16,000
+                        Cr Inventory                 16,000   (20 × 800 cost)
+4c  Rider (all)      →  no entry
+4d  Approve          →  Dr Cash              20,000
+                        Cr Sales                     20,000
+                        Dr COGS              16,000
+                        Cr Goods in Transit          16,000</div>
+    <p><strong>Running deltas:</strong> Inventory <strong>+124,000</strong> · Goods in Transit <strong>0</strong> · Cash <strong>+20,000</strong> · Sales <strong>+20,000</strong> · COGS <strong>+16,000</strong> · gross profit <strong>4,000</strong>.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li><strong>Inventory tab</strong> — Oil 100 → 80 <em>at assignment</em>, not at approval. The stock left at dispatch.</li>
+      <li><strong>Balance Sheet</strong> — at assignment, Inventory −16,000 and Goods in Transit +16,000: <strong>total assets unchanged</strong>. Value changed <em>location</em>, not amount. At approval, Cash +20,000 and GIT −16,000.</li>
+      <li><strong>P&amp;L</strong> — nothing until approval, then Sales +20,000 and COGS +16,000 together</li>
+      <li><strong>Sales Orders</strong> — the SO from assignment · <strong>Invoices</strong> — the invoice from approval</li>
+      <li><strong>Delivery Monitor</strong> — live transitions, rider location if tracking is on</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags — the important ones</h4>
+      <ul>
+        <li><strong>Sales or COGS moving at 4a or 4b.</strong> Revenue recognised before delivery is the most serious bug this app can have.</li>
+        <li><strong>Anything posting during 4c.</strong> Riders must never move the ledger.</li>
+        <li>Goods in Transit not returning to zero after approval</li>
+        <li>Inventory dropping at <em>approval</em> instead of assignment — or at both</li>
+        <li>COGS ≠ 16,000. If it equals 20,000, the app is costing goods at selling price.</li>
+        <li>The approval dialog describing a posting different from what actually posts</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C5 -->
+  <div class="step" id="c5">
+    <span class="step-id">C5</span>
+    <h3>Delivery 2 — credit sale, then payment</h3>
+
+    <h4>Concept</h4>
+    <p>Same sale, different settlement. When the customer doesn’t pay on delivery, the revenue is <strong>still earned</strong> — you delivered — so Sales is recognised exactly as before. What changes is the debit: <strong>Accounts Receivable</strong> instead of Cash, a promise to pay.</p>
+    <p>When the money arrives later, that is <strong>not a second sale</strong>. It’s an asset swap: A/R turns into Bank. <strong>The P&amp;L must not move at all.</strong> Booking revenue again at payment time is the classic double-count, and this step exists to catch it.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li><strong>5a.</strong> Create a delivery for <code>Ahmed Store</code>: <strong>10 × 10kg Flour Bag @ 1,600 = 16,000</strong>. Assign to <strong>Haseeb Ali</strong>.</li>
+      <li><strong>5b.</strong> As Rider 2: advance to <code>arrived</code> → Capture Signed Bill → <strong>NOT PAID</strong> → submit.</li>
+      <li><strong>5c.</strong> As admin: approve. Verify the badge says <strong>NOT PAID</strong> and the hint says CREDIT <em>before</em> you approve.</li>
+      <li><strong>5d.</strong> Transactions → <strong>Receive Payments</strong> → <code>Ahmed Store</code> → <code>16,000</code> → account <strong>Bank</strong> → save.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+<div class="je">5a  Assign   →  Dr Goods in Transit     12,000
+                Cr Inventory                    12,000   (10 × 1,200)
+5c  Approve  →  Dr Accounts Receivable  16,000
+                Cr Sales                        16,000
+                Dr COGS                 12,000
+                Cr Goods in Transit             12,000
+5d  Payment  →  Dr Bank                 16,000
+                Cr Accounts Receivable          16,000</div>
+    <p><strong>Running deltas:</strong> Inventory <strong>+112,000</strong> · GIT <strong>0</strong> · A/R <strong>0</strong> · Bank <strong>+16,000</strong> · Sales <strong>+36,000</strong> · COGS <strong>+28,000</strong>.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Inventory tab — Flour 50 → 40 at assignment</li>
+      <li><strong>A/R Aging</strong> — after 5c an open 16,000 for Ahmed Store; after 5d, <strong>gone</strong></li>
+      <li>Invoices — flips <code>Open → Paid</code></li>
+      <li><strong>P&amp;L</strong> — moves at 5c only, <strong>identical before and after 5d</strong></li>
+      <li>Balance Sheet — at 5d, Bank +16,000 and A/R −16,000, total assets unchanged</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>P&amp;L changing at 5d.</strong> Revenue was already recognised — if Sales moves again it is double-counted.</li>
+        <li>The invoice staying <code>Open</code> after full payment, or A/R Aging still showing it</li>
+        <li>Payment exceeding the invoice with no over-payment or credit handling</li>
+        <li>A/R not appearing at 5c — i.e. it posted to Cash for an unpaid delivery</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C6 -->
+  <div class="step" id="c6">
+    <span class="step-id">C6</span>
+    <h3>Delivery 3 — rejection and reversal</h3>
+
+    <h4>Concept</h4>
+    <p>Not every dispatch becomes a sale. If the goods come back, the only correct outcome is: stock returns to the shelf, Goods in Transit clears, and <strong>no revenue and no COGS are ever recorded</strong> — because nothing was sold. The books end up exactly where they were before the dispatch.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>The admin <strong>rejects</strong> the request in the Inventory Approval Queue. Rejection reverts the rider’s shadow inventory and notifies them.</p>
+    <div class="note">
+      <h4>Know this before you test</h4>
+      <p>The rejection confirmation only mentions <em>shadow inventory</em>. Whether the <strong>ledger</strong> reversal (Inventory back up, Goods in Transit back down) also fires is exactly what this step checks. This is the most likely place in the warehouse flow for value to leak — record your numbers carefully.</p>
+    </div>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>Create a delivery for <code>Ahmed Store</code>: <strong>5 × 5L Cooking Oil</strong>. Assign to Saim Raza.</li>
+      <li><strong>Write down</strong> Inventory, Goods in Transit and on-hand Oil right now.</li>
+      <li>As the rider: advance to <code>arrived</code>, capture the bill, mark <strong>NOT PAID</strong>, submit.</li>
+      <li>As admin: <strong>Reject</strong> with a reason.</li>
+      <li>Re-check the same three numbers.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+<div class="je">Assign  →  Dr Goods in Transit   4,000
+           Cr Inventory                  4,000   (5 × 800)
+Reject  →  Dr Inventory          4,000
+           Cr Goods in Transit           4,000</div>
+    <p><strong>Net effect of the whole step: zero.</strong> On-hand Oil 80 → 75 → 80. No Sales. No COGS. P&amp;L untouched.</p>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>Goods in Transit still holding 4,000 after rejection</strong> — value stranded, balance sheet wrong</li>
+        <li>Inventory not restored — stock silently destroyed</li>
+        <li><strong>Any</strong> Sales or COGS from a rejected delivery</li>
+        <li>The rejection succeeding on screen but not surviving a pull-to-refresh</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C7 -->
+  <div class="step" id="c7">
+    <span class="step-id">C7</span>
+    <h3>Controls — idempotency, reversal, over-allocation</h3>
+
+    <h4>Concept</h4>
+    <p>Financial software is judged as much on what it <em>refuses</em> to do. Four controls matter:</p>
+    <ul>
+      <li><strong>Idempotency</strong> — approving twice must not post twice. Networks retry; users double-tap. If each attempt posts, revenue inflates silently and the error is nearly impossible to find later.</li>
+      <li><strong>Reversal, not deletion</strong> — a mistaken approval is undone by an <em>offsetting entry</em>, never by erasing the original.</li>
+      <li><strong>Stock cannot go negative</strong> — you cannot dispatch what you do not have.</li>
+      <li><strong>In-flight protection</strong> — a slow network must not turn one action into three.</li>
+    </ul>
+
+    <h4>Do this</h4>
+    <p><strong>7a. Double approval.</strong> Reopen the C4 delivery and try to approve it again. Must be impossible or refused — and must <strong>never</strong> post a second set of entries. Verify by comparing Sales/COGS before and after.</p>
+    <p><strong>7b. Undo Approval.</strong> On an approved row, tap <strong>Undo Approval</strong>. Then check the ledger effects reverse (or an offsetting entry appears — either is fine, silent deletion is not); the request returns to <strong>Pending</strong>; and re-approving posts the sale exactly once more, not twice.</p>
+    <p><strong>7c. Over-allocation.</strong> Try to create and assign a delivery for <strong>90 units of Cooking Oil</strong> when only 80 are on hand. Must be rejected with a clear “insufficient stock” message; inventory must not go negative; no entry may post.</p>
+    <div class="note"><p>The Create Delivery dropdown shows live stock (<code>5L Cooking Oil · stock 80</code>) but does not itself block an over-quantity. The real guard is server-side at assignment — test by <strong>assigning</strong>, not just creating.</p></div>
+    <p><strong>7d. Flaky network.</strong> On the rider app, enable airplane mode mid-action, then restore. The status must end up advanced <strong>exactly one step</strong>, with either a success or a clear retry prompt — never a silent loss, never a double advance.</p>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li>A second approval producing a second invoice or second set of journal lines</li>
+        <li>Undo deleting the original entry rather than reversing it</li>
+        <li>Negative on-hand quantity anywhere, ever</li>
+        <li>Over-allocation succeeding; a status jumping two steps after a retry</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C8 -->
+  <div class="step" id="c8">
+    <span class="step-id">C8</span>
+    <h3>Credit memo — a customer return <em>after</em> the sale</h3>
+
+    <h4>Concept</h4>
+    <p>C6 handled a return <em>before</em> any sale existed — just unwind the dispatch. This is the harder case: the sale is already invoiced and in your P&amp;L, and the customer sends goods back.</p>
+    <p>You must <strong>never edit or delete the original invoice</strong>. Instead you issue a <strong>credit memo</strong>: a separate, linked document posting the mirror image of the sale for the returned portion only. The invoice stays on record; the memo offsets it. That’s what keeps the audit trail intact — anyone can later see both what was sold and what came back.</p>
+    <p>A goods return has <strong>two halves</strong>, and forgetting either is a classic bug: <strong>the revenue side</strong> (reverse the sale value and any tax charged) and <strong>the cost side</strong> (goods physically return, so Inventory goes up and COGS comes down).</p>
+
+    <div class="gap">
+      <h4>Unproven module</h4>
+      <p>Credit memos have <strong>never been exercised in production</strong> (see <em>ACCOUNTING_QA_GUIDE.md</em>, gap G3 — credit memos, vendor credits, inventory adjustments and tax payments all have zero rows). Test carefully and expect to find defects. A correction mechanism that doesn’t work is worse than a missing feature, because it fails exactly when someone is trying to fix a mistake.</p>
+    </div>
+
+    <h4>Do this</h4>
+    <p>Ahmed Store returns <strong>5 of the 20 units</strong> from C4 — a partial return. Transactions → Credit Memos → New → <code>Ahmed Store</code>, referencing the C4 invoice:</p>
+    <div class="tw"><table>
+      <thead><tr><th>Line</th><th>Item</th><th>Qty returned</th><th>Price</th><th>Total</th></tr></thead>
+      <tbody><tr><td>1</td><td>5L Cooking Oil</td><td class="num">5</td><td class="num">1,000</td><td class="num">5,000</td></tr></tbody>
+    </table></div>
+    <p>Number it <code>CM-001</code>. Match the tax treatment of the original invoice.</p>
+    <p><strong>Settlement — pick one and note which:</strong></p>
+    <ul>
+      <li><strong>(A) Leave it as a credit on the customer’s account</strong> — use this to keep the Part D numbers valid</li>
+      <li>(B) Refund in cash — also expect <code>Dr Accounts Receivable 5,000 / Cr Cash 5,000</code>, and adjust Part D by 5,000 on Cash and A/R</li>
+    </ul>
+
+    <h4>Expected result</h4>
+<div class="je">Revenue reversal  →  Dr Sales               5,000
+                     Cr Accounts Receivable         5,000   (+ Dr Tax if taxed)
+Cost reversal     →  Dr Inventory           4,000
+                     Cr COGS                        4,000   (5 × 800, back on the shelf)</div>
+    <p><strong>Deltas:</strong> Sales <strong>−5,000</strong> · COGS <strong>−4,000</strong> · Inventory <strong>+4,000</strong> · A/R <strong>−5,000</strong> (a credit balance) · gross profit <strong>−1,000</strong> — exactly the profit on the returned units.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Inventory tab — Oil 80 → 85 · Inventory Valuation +4,000</li>
+      <li>Customer detail / A/R Aging — Ahmed Store holds a <strong>5,000 credit</strong></li>
+      <li>Invoices — the original C4 invoice <strong>still there, unmodified</strong>, now linked to CM-001</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li>The original invoice <strong>edited or deleted</strong> instead of offset</li>
+        <li><strong>Inventory not restocked</strong> — a goods return that doesn’t restock means you sold stock you still own</li>
+        <li>COGS not reversed — gross profit stays overstated</li>
+        <li>Tax not reversed proportionally when the sale was taxed — very common bug</li>
+        <li>A full reversal for a partial return (5,000 returned reversing the whole 20,000)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C9 -->
+  <div class="step" id="c9">
+    <span class="step-id">C9</span>
+    <h3>Vendor credit — returning stock to a supplier</h3>
+
+    <h4>Concept</h4>
+    <p>The mirror image of C8, on the buying side. You received and billed 100 units; you send 10 back. Two things change: you owe the supplier less (<strong>A/P down</strong>) and you hold less stock (<strong>Inventory down</strong>).</p>
+    <p><strong>There is no P&amp;L impact.</strong> Returning purchased stock is not income and not an expense — it never went through your P&amp;L in the first place. It shrinks an asset and shrinks a liability. If a vendor credit touches revenue or expense on a straight goods return, that’s a bug.</p>
+    <div class="gap"><p>Same G3 caveat as C8 — this module is unproven. Test it deliberately.</p></div>
+
+    <h4>Do this</h4>
+    <p>Return <strong>10 × 5L Cooking Oil</strong> to <code>Metro Wholesale</code> — Transactions → Vendor Credits → New, referencing the C2 bill. Line: 10 × 800 = <strong>8,000</strong>. Number it <code>VC-001</code>. The bill is still unpaid, so the credit should reduce the open bill.</p>
+
+    <h4>Expected result</h4>
+<div class="je">Dr Accounts Payable   8,000
+Cr Inventory                  8,000</div>
+    <p><strong>Deltas:</strong> Accounts Payable <strong>−8,000</strong> (now 132,000 owed) · Inventory <strong>−8,000</strong> · <strong>no P&amp;L movement</strong>.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Inventory tab — Oil 85 → 75 · Inventory Valuation −8,000</li>
+      <li>A/P Aging — Metro Wholesale drops from 140,000 to <strong>132,000</strong></li>
+      <li>Bills — the original bill <strong>preserved</strong>, linked to VC-001</li>
+      <li>P&amp;L — <strong>completely unchanged</strong></li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li>Any revenue or expense line moving</li>
+        <li>A/P reduced but Inventory untouched — you’d be claiming free stock</li>
+        <li>Inventory reduced but A/P untouched — you’d be giving goods away</li>
+        <li>The original bill edited instead of offset</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C10 -->
+  <div class="step" id="c10">
+    <span class="step-id">C10</span>
+    <h3>Pre-paid delivery — optional variant</h3>
+
+    <h4>Concept</h4>
+    <p>Sometimes the customer pays <em>before</em> dispatch. Then the sale is already settled at assignment, and the only thing left to recognise at approval is the <strong>cost</strong> — revenue and cash were booked up front.</p>
+
+    <h4>Do this</h4>
+    <div class="note"><p>Run this <strong>after</strong> the Part D reconciliation, or take a fresh snapshot first — it adds numbers outside the main script’s totals.</p></div>
+    <p>Create a delivery for <code>Ahmed Store</code>: <strong>2 × 10kg Flour Bag @ 1,600 = 3,200</strong>, tick <strong>Pre-paid sale</strong>, assign, complete as the rider, approve. The queue should show a <strong>PRE-PAID</strong> badge and the hint <em>“Posts COGS and relieves Goods in Transit (sale was pre-paid).”</em></p>
+
+    <h4>Expected result</h4>
+<div class="je">Assign   →  Dr Goods in Transit   2,400
+            Cr Inventory                  2,400
+            + the invoice and its cash payment
+Approve  →  Dr COGS               2,400
+            Cr Goods in Transit           2,400   ← cost only, no revenue</div>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>Revenue posting twice</strong> — once at assignment, again at approval. The biggest risk in this variant.</li>
+        <li>The queue showing PAID instead of PRE-PAID</li>
+        <li>No invoice created at assignment despite the confirmation promising one</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+  <!-- C11 -->
+  <div class="step" id="c11">
+    <span class="step-id">C11</span>
+    <h3>Stock Adjustment — correcting the shelf</h3>
+
+    <h4>Concept</h4>
+    <p>Sometimes the shelf and the system disagree, and the shelf is right. Stock is damaged, stolen, found, or was simply miscounted. An adjustment is how you tell the books the truth.</p>
+    <p>The key idea: <strong>an adjustment is not a free edit.</strong> Inventory is an asset, so changing the quantity changes what the company is worth, and that difference has to land somewhere in the P&amp;L. Writing 5 units off does not just reduce stock — it records a <strong>5-unit expense</strong>. A system that let you change a quantity without an offsetting entry would silently stop balancing.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>Inventory → Adjustment. You pick the item, enter the <strong>new total quantity</strong> (not the difference), and choose a reason. The screen shows the computed ±delta for sanity, but what it sends is the absolute figure — the server derives the variance itself, which is what stops two people adjusting the same item at once from compounding each other’s deltas.</p>
+    <p>The variance is valued at the item’s <strong>weighted-average unit cost</strong>:</p>
+    <div class="je">decrease   Dr Inventory Adjustment / Shrinkage 6400
+           Cr Inventory                       1200
+
+increase   Dr Inventory                       1200
+           Cr Inventory Adjustment / Shrinkage 6400</div>
+    <p>Six reasons map to codes the API accepts: Physical Count, Damage, Theft, Correction, Obsolescence, Other. A seventh, <em>Reversal</em>, exists but is written only by the server when you reverse an adjustment — you cannot pick it, which is what stops a reversal being reversed forever.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>Note on-hand Oil and the Inventory Valuation total.</li>
+      <li>Inventory → Adjustment. Item <strong>5L Cooking Oil</strong>, new quantity <strong>five fewer than current</strong>, reason <strong>Damage</strong>, note “crushed in transit”.</li>
+      <li>Save, then re-check on-hand and valuation.</li>
+      <li>Now run one <strong>upward</strong>: same item, five <em>more</em> than current, reason <strong>Correction</strong>.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+    <div class="tw"><table>
+      <thead><tr><th>Step</th><th>Journal entry</th></tr></thead>
+      <tbody>
+        <tr><td>Write-down 5</td><td><code>Dr Shrinkage 4,000 / Cr Inventory 4,000</code> <em>(5 × 800)</em></td></tr>
+        <tr><td>Write-up 5</td><td><code>Dr Inventory 4,000 / Cr Shrinkage 4,000</code></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Net effect of both: zero.</strong> That round trip is the cleanest proof the mechanism is symmetric.</p>
+
+    <h4>Where it shows up</h4>
+    <ul>
+      <li>Inventory → item detail → movements: two new rows typed <code>adjustment</code>, signed −5 and +5</li>
+      <li>Reports → Inventory Valuation: down 4,000, then back</li>
+      <li>Reports → P&amp;L: a Shrinkage expense appears, then nets to zero</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>Entering an absolute quantity and getting a delta applied</strong> — adjust 80 → 75 and land on 5, not 75. This was a real bug: the app used to send the difference to an endpoint expecting the total.</li>
+        <li>Stock changing with <strong>no</strong> journal entry — the balance sheet is now wrong</li>
+        <li>A zero-variance adjustment posting an entry (there is nothing to record)</li>
+        <li>An empty reason dropdown, or a saved adjustment showing a journal entry ID that opens nothing</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C12 -->
+  <div class="step" id="c12">
+    <span class="step-id">C12</span>
+    <h3>Physical Count — reconciling the whole shelf at once</h3>
+
+    <h4>Concept</h4>
+    <p>An adjustment fixes one item. A <strong>physical count</strong> is the periodic discipline of counting everything and reconciling it in one go — the stocktake. The output is not “the system now says what I counted”; it is a <strong>variance report</strong> plus the adjustments that explain it. The discrepancy is the valuable part, because it is the only evidence you have of shrinkage.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>Inventory → Physical Count, a three-step wizard: choose a scope (all items, or by category/location), enter counted quantities, then review variances before committing.</p>
+    <p>Committing sends the <strong>whole count as one request</strong>. The server records a count header and a line per item, raises an adjustment only where the variance is non-zero, and posts each journal entry — all in a single transaction. That atomicity matters: an earlier version looped one call per line, so a failure halfway through left the count half-applied with no way back.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>Inventory → Physical Count → scope <strong>All Items</strong> → Next.</li>
+      <li>Enter counted quantities. Make <strong>two</strong> disagree with the system; leave the rest matching.</li>
+      <li>Review: only your two should show as variances.</li>
+      <li><strong>Adjust All</strong>, then check item movements and the P&amp;L.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+    <ul>
+      <li>One adjustment per <strong>varying</strong> line; matching lines record a count line but post nothing</li>
+      <li>Each variance valued at that item’s unit cost and posted as in C11</li>
+      <li>On-hand for every counted item now equals what you typed</li>
+    </ul>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>Quantities changing with no adjustment and no journal entry</strong> — a silent overwrite defeats the entire purpose of counting</li>
+        <li>Matching lines generating adjustments (noise that hides real shrinkage)</li>
+        <li>A failure partway leaving some items adjusted and others not</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C13 -->
+  <div class="step" id="c13">
+    <span class="step-id">C13</span>
+    <h3>Partial delivery — when the customer takes some</h3>
+
+    <h4>Concept</h4>
+    <p>C4 is all-or-nothing and C6 is nothing-at-all. Real deliveries land in between: the customer takes 8 of 10 and sends 2 back on the van. Both outcomes have to be recorded from <strong>one</strong> proof of delivery, because there is only one visit.</p>
+    <p>The accounting has to split cleanly: you sold 8, so 8 units of revenue and 8 units of COGS; the other 2 never sold, so they go back on the shelf at cost and never touch the P&amp;L.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>On the rider’s bill-capture screen, each line carries a <strong>returned quantity</strong> box. The rider types what came back; delivered is the remainder, shown live on the line. Entry is bounded by what was dispatched — you cannot return 3 of 2 — and Submit stays disabled until every line is valid.</p>
+    <p>The rider sends <strong>quantities only, never a status</strong>. The outcome is the admin’s: approving means the delivered part sold, rejecting reverses the whole dispatch. This is deliberate — a rider marking a delivery “returned” on the handset while the server disagreed would be a lie the books then inherit.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>Create a delivery for <code>Ahmed Store</code>: <strong>10 × 5L Cooking Oil</strong>. Assign to <strong>Saim Raza</strong>.</li>
+      <li>Note Inventory, Goods in Transit, A/R and on-hand Oil.</li>
+      <li>As the rider: advance to <code>arrived</code>, capture the bill, and under <strong>Delivered quantities</strong> enter <strong>2</strong> returned on the Oil line. The line should read <em>“10 dispatched · delivering 8”</em>.</li>
+      <li>Mark <strong>NOT PAID</strong>, submit.</li>
+      <li>As admin: open the Inventory Approval Queue. <strong>The Returned column must read 2</strong> — not 0.</li>
+      <li>Approve, then re-check every number.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+    <div class="tw"><table>
+      <thead><tr><th>Step</th><th>Journal entry</th></tr></thead>
+      <tbody>
+        <tr><td>Assign</td><td><code>Dr Goods in Transit 8,000 / Cr Inventory 8,000</code> <em>(10 × 800)</em></td></tr>
+        <tr><td>Approve</td><td><code>Dr A/R 8,000+tax / Cr Sales 8,000</code> <em>(8 × 1,000 — delivered only)</em></td></tr>
+        <tr><td>Approve</td><td><code>Dr COGS 6,400 + Dr Inventory 1,600 / Cr Goods in Transit 8,000</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>On-hand Oil: <code>80 → 70 → 72</code>. Goods in Transit nets to <strong>zero</strong>. Revenue reflects <strong>8</strong>, not 10.</p>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>The Returned column reading 0 when the rider typed 2</strong> — the quantity never left the handset</li>
+        <li>Revenue for all 10 — over-billing the customer for goods they refused</li>
+        <li>The 2 returned units not restocked, or restocked <strong>twice</strong> (on-hand must be 72, not 74)</li>
+        <li>Goods in Transit left holding the value of the returned part</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- C14 -->
+  <div class="step" id="c14">
+    <span class="step-id">C14</span>
+    <h3>Reassign and Cancel — and why persistence is the whole test</h3>
+
+    <h4>Concept</h4>
+    <p>Two admin actions on a delivery in flight: hand it to a different rider, or call it off. Cancelling is the one with teeth — a cancelled delivery is stock sitting on a van that must come back to the shelf, and its value must come out of Goods in Transit. A cancel that only changes a label leaves that value stranded on the balance sheet forever.</p>
+    <p><code>cancelled</code> and <code>failed</code> are <strong>different terminal states</strong>. Failed means the delivery was attempted and didn’t work; cancelled means it was called off deliberately. They route differently in the admin queues, so recording one as the other quietly corrupts operational reporting.</p>
+
+    <h4>How FinMatrix does it</h4>
+    <p>Admin → Delivery Management → open a delivery → <strong>Re-assign</strong> or <strong>Cancel</strong> in the bottom bar. Reassign swaps the rider without re-committing stock (the goods were already dispatched) and notifies the new rider. Cancel sets status <code>cancelled</code>, records your reason, and triggers the restock and ledger reversal server-side. Both are gated on the delivery not already being finished.</p>
+
+    <h4>Do this</h4>
+    <ol>
+      <li>Create and assign a delivery: <strong>3 × 10kg Flour Bag</strong> to <strong>Saim Raza</strong>. Note Inventory, Goods in Transit and on-hand Flour.</li>
+      <li>Open it → <strong>Re-assign</strong> → pick <strong>Haseeb Ali</strong> → confirm.</li>
+      <li><strong>Pull to refresh.</strong> The new rider must still be there. <em>This is the actual test.</em></li>
+      <li>Now <strong>Cancel</strong> it, confirm, and re-check the three numbers.</li>
+    </ol>
+
+    <h4>Expected result</h4>
+    <div class="tw"><table>
+      <thead><tr><th>Step</th><th>Journal entry</th></tr></thead>
+      <tbody>
+        <tr><td>Assign</td><td><code>Dr Goods in Transit 3,600 / Cr Inventory 3,600</code> <em>(3 × 1,200)</em></td></tr>
+        <tr><td>Reassign</td><td><strong>none</strong> — the goods didn’t move, only who is carrying them</td></tr>
+        <tr><td>Cancel</td><td><code>Dr Inventory 3,600 / Cr Goods in Transit 3,600</code> + stock restored</td></tr>
+      </tbody>
+    </table></div>
+    <p>Status reads <strong>Cancelled</strong>, not Failed. On-hand Flour returns to its pre-assign figure.</p>
+
+    <div class="flag">
+      <h4>Red flags</h4>
+      <ul>
+        <li><strong>The change vanishing on pull-to-refresh</strong> — the classic symptom of a UI-only action that never reached the server. Always refresh before believing a success message.</li>
+        <li>Cancel producing status <strong>failed</strong> instead of cancelled</li>
+        <li>Stock not restored, or Goods in Transit still holding value after cancelling</li>
+        <li>A success alert when the server actually refused — try cancelling an already-delivered delivery; you should get a real error, not a green message</li>
+      </ul>
+    </div>
+  </div>
+
+
+  <h3>What already proves each step</h3>
+  <p>Every red flag above is a <strong>condition that would indicate a bug</strong>, not one that exists. Most are asserted automatically. Run a suite with <code>npm run test:&lt;name&gt;</code> from the backend repo — and space them ~60s apart, or the sign-in throttle fails them on nothing (see Part G).</p>
+  <div class="tw"><table>
+    <thead><tr><th>Step</th><th>Proven by</th><th>Key assertions</th></tr></thead>
+    <tbody>
+      <tr><td>C1 master data</td><td><em>manual</em></td><td>Non-posting; Trial Balance unchanged</td></tr>
+      <tr><td>C2 purchase cycle</td><td><code>chunk2</code></td><td>PO posts nothing; receipt Dr Inventory / Cr GRNI; bill Dr GRNI / Cr A/P; <strong>GRNI returns to zero</strong></td></tr>
+      <tr><td>C3 riders</td><td><code>chunk1</code>, <code>tiering</code></td><td>Status machine; rider plan limit</td></tr>
+      <tr><td>C4 cash sale</td><td><code>delivery-ledger</code></td><td><strong>No revenue at assignment</strong>; rider POD posts nothing; approval posts revenue + COGS; GIT → 0</td></tr>
+      <tr><td>C5 credit sale</td><td><code>delivery-ledger</code></td><td>A/R carries the invoice; later payment moves Bank/A/R with no P&amp;L change</td></tr>
+      <tr><td>C6 rejection</td><td><code>delivery-ledger</code></td><td>Reversal + restock, sales order cancelled, no revenue either way</td></tr>
+      <tr><td>C7 controls</td><td><code>delivery-ledger</code>, <code>voids</code></td><td>Double-approve → 409; undo reverses rather than deletes; stock never negative</td></tr>
+      <tr><td>C8 credit memo</td><td><code>corrections</code>, <code>voids</code></td><td>Restock, COGS + tax reversed, original invoice intact</td></tr>
+      <tr><td>C9 vendor credit</td><td><code>corrections</code></td><td>A/P and Inventory both move; no P&amp;L impact</td></tr>
+      <tr><td>C10 pre-paid</td><td><code>delivery-ledger</code></td><td>Invoice + payment at dispatch; approval posts COGS only</td></tr>
+      <tr><td>C11 stock adjustment</td><td><code>voids</code> + <em>manual</em></td><td>Absolute quantity applied; balanced shrinkage entry; reversal symmetric</td></tr>
+      <tr><td>C12 physical count</td><td><em>manual</em></td><td>Only varying lines adjust; atomic commit</td></tr>
+      <tr><td>C13 partial delivery</td><td><code>delivery-ledger</code></td><td>2 of 4 returned → delivered part invoiced, remainder restocked, GIT → 0</td></tr>
+      <tr><td>C14 reassign / cancel</td><td><em>manual</em></td><td>Persists across refresh; cancel restocks and reverses GIT</td></tr>
+      <tr><td>D invariants</td><td><code>qa/run-qa.sh</code></td><td>All 14 SQL invariants return zero rows</td></tr>
+      <tr><td>E security</td><td><code>authgate</code>, <code>chunk1</code></td><td>Rider 403s; tenancy; deactivated company blocked from business endpoints</td></tr>
+      <tr><td>F4 accounting core</td><td><code>five-features</code>, <code>bankrec</code>, <code>period-close</code></td><td>Chart of Accounts, Payroll, Budgets, Bank Reconciliation, closed-period refusal</td></tr>
+    </tbody>
+  </table></div>
+  <p><em>manual</em> means there is no automated assertion yet — those are the steps where <strong>your</strong> testing carries the most weight.</p>
+
+<!-- ══════════ PART D ══════════ -->
+<section id="d">
+  <div class="part-head"><span class="k">PART D</span><h2>Reports tie-out &amp; reconciliation</h2></div>
+
+  <div class="figs">
+    <div class="fig"><span class="lbl">Inventory delta</span><span class="val">+108,000</span><span class="sub">= Balance Sheet = Valuation report</span></div>
+    <div class="fig"><span class="lbl">GRNI</span><span class="val">0</span><span class="sub">purchasing integrity</span></div>
+    <div class="fig"><span class="lbl">Goods in Transit</span><span class="val">0</span><span class="sub">delivery integrity</span></div>
+    <div class="fig"><span class="lbl">Gross profit</span><span class="val">+7,000</span><span class="sub">31,000 sales − 24,000 COGS</span></div>
+  </div>
+
+  <h3>Report by report</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Report</th><th>What must be true</th></tr></thead>
+    <tbody>
+      <tr><td>Trial Balance</td><td>Total debits = total credits, <strong>to the rupee</strong></td></tr>
+      <tr><td>Profit &amp; Loss</td><td>Sales +31,000 · COGS +24,000 · gross profit <strong>+7,000</strong></td></tr>
+      <tr><td>Balance Sheet</td><td>Assets = Liabilities + Equity; the Inventory line equals the Valuation total</td></tr>
+      <tr><td>Inventory Valuation</td><td>Total delta <strong>+108,000</strong>; matches on-hand × cost</td></tr>
+      <tr><td>A/R Aging</td><td>Nothing owed by Ahmed Store; a <strong>5,000 credit</strong> if you chose settlement (A)</td></tr>
+      <tr><td>A/P Aging</td><td>Metro Wholesale <strong>132,000</strong> (140,000 bill − 8,000 credit)</td></tr>
+      <tr><td>General Ledger</td><td>Every entry present, dated, traceable to its document</td></tr>
+      <tr><td>Cash Flow</td><td>Cash +20,000 and Bank +16,000 as operating inflows</td></tr>
+      <tr><td>Delivery Daily / Performance</td><td>Today’s completed deliveries; per-rider stats</td></tr>
+      <tr><td>Analytics Dashboard</td><td>Totals consistent with P&amp;L and Balance Sheet</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The reconciliation table</h3>
+  <p><code>Your Step 0 snapshot + this delta = the balance showing now.</code> Check every row.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Account</th><th>Where it came from</th><th>Delta</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Inventory</strong></td><td>+140,000 (C2b) −16,000 (C4b) −12,000 (C5a) −4,000 (C6) +4,000 (C6 reject) +4,000 (C8) −8,000 (C9)</td><td class="num"><strong>+108,000</strong></td></tr>
+      <tr><td><strong>GRNI</strong></td><td>+140,000 (C2b) −140,000 (C2c)</td><td class="num"><strong>0</strong></td></tr>
+      <tr><td><strong>Goods in Transit</strong></td><td>+16,000 −16,000 · +12,000 −12,000 · +4,000 −4,000</td><td class="num"><strong>0</strong></td></tr>
+      <tr><td><strong>Accounts Payable</strong></td><td>+140,000 (C2c) −8,000 (C9)</td><td class="num"><strong>+132,000</strong></td></tr>
+      <tr><td><strong>Cash</strong></td><td>+20,000 (C4d)</td><td class="num"><strong>+20,000</strong></td></tr>
+      <tr><td><strong>Bank</strong></td><td>+16,000 (C5d)</td><td class="num"><strong>+16,000</strong></td></tr>
+      <tr><td><strong>Accounts Receivable</strong></td><td>+16,000 (C5c) −16,000 (C5d) −5,000 (C8)</td><td class="num"><strong>−5,000</strong></td></tr>
+      <tr><td><strong>Sales</strong></td><td>+20,000 (C4d) +16,000 (C5c) −5,000 (C8)</td><td class="num"><strong>+31,000</strong></td></tr>
+      <tr><td><strong>COGS</strong></td><td>+16,000 (C4d) +12,000 (C5c) −4,000 (C8)</td><td class="num"><strong>+24,000</strong></td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>On-hand:</strong> Oil = 100 − 20 − 5 + 5 + 5 − 10 = <strong>75</strong> · Flour = 50 − 10 = <strong>40</strong>.</p>
+<div class="je">Inventory value  =  75 × 800  +  40 × 1,200
+                 =  60,000    +  48,000
+                 =  108,000
+
+Three numbers must agree exactly:
+  1. the Inventory delta above
+  2. the Balance Sheet Inventory line movement
+  3. the Inventory Valuation report total movement
+
+Proof it balances:
+  Assets Δ       108,000 + 20,000 + 16,000 − 5,000 + 0   =  139,000
+  Liabilities Δ  132,000 + 0                             =  132,000
+  Equity Δ       net income  31,000 − 24,000             =    7,000
+                                     132,000 + 7,000     =  139,000  ✓</div>
+
+  <h3>The warehouse invariants</h3>
+  <p>These hold after every session, forever. Not “nice to have” — a failure in any means the books are wrong.</p>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Invariant</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Total debits = total credits</td><td>If this fails, nothing else is meaningful</td></tr>
+      <tr><td>2</td><td>Assets = Liabilities + Equity</td><td>The accounting equation. Non-negotiable</td></tr>
+      <tr><td>3</td><td><strong>GRNI = 0</strong> after every purchase cycle</td><td>Goods received and billed exactly once</td></tr>
+      <tr><td>4</td><td><strong>Goods in Transit = 0</strong> for every finished delivery</td><td>No stock value stranded on a van</td></tr>
+      <tr><td>5</td><td>Inventory = Valuation report = on-hand × cost</td><td>Subledger and ledger agree</td></tr>
+    </tbody>
+  </table></div>
+  <p>Plus: inventory quantity <strong>never negative</strong>; revenue <strong>never</strong> recognised before delivery <em>and</em> approval; no document ever edited or deleted — only offset.</p>
+</section>
+
+<!-- ══════════ PART E ══════════ -->
+<section id="e">
+  <div class="part-head"><span class="k">PART E</span><h2>Security &amp; permissions</h2></div>
+
+  <h3>What a rider must never be able to do</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Check</th><th>Expected</th></tr></thead>
+    <tbody>
+      <tr><td>Deliveries visible</td><td><strong>Only their own.</strong> Rider 2’s must be invisible</td></tr>
+      <tr><td>Accounting screens</td><td>Not present in navigation at all — no Transactions, Reports or More tab</td></tr>
+      <tr><td>Inventory tab</td><td>Only <strong>their van stock</strong>, not the warehouse’s full inventory</td></tr>
+      <tr><td>Approvals</td><td>Not reachable. A rider must never approve their own delivery</td></tr>
+      <tr><td>Direct API call to an accounting endpoint</td><td><strong>403</strong> — not a 200, not an empty list, not a crash</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>How to test the API directly:</strong> take the rider’s auth token and call an admin endpoint (<code>GET /reports/trial-balance</code>, <code>GET /inventory/items</code>, <code>PATCH /inventory-approvals/:id/review</code>). Every one must return <strong>403 Forbidden</strong>. A 200 with an empty body is a <em>failure</em>, not a pass — it means the guard isn’t there, only the data happened to be empty.</p>
+
+  <h3>Tenancy</h3>
+  <p>Warehouse Co must never see another company’s data. Customer, vendor, item and delivery lists contain only Warehouse Co records; Global Search returns nothing from other companies; a direct fetch of another company’s document id returns 403/404, not the document.</p>
+
+  <h3>Plan limits</h3>
+  <p>Only <strong>active delivery personnel</strong> is metered (2 / 5 / 10 by plan). Creating a rider beyond the allowance is rejected with a message naming the plan and limit. Everything else — customers, vendors, employees, invoices, items, deliveries — is unlimited by design.</p>
+</section>
+
+<!-- ══════════ PART F ══════════ -->
+<section id="f">
+  <div class="part-head"><span class="k">PART F</span><h2>Everything else in the app</h2></div>
+  <p>The warehouse build ships the complete accounting system alongside the warehouse features. Test these the same way: do the action, then check the ledger.</p>
+
+  <h3>Inventory tools</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Feature</th><th>Concept &amp; expected effect</th></tr></thead>
+    <tbody>
+      <tr><td>Item list &amp; filters</td><td>In stock / low stock / out of stock; low-stock flag driven by Reorder Point. Non-posting</td></tr>
+      <tr><td>Item detail &amp; movements</td><td>Every receipt, dispatch and return. Each row should trace to a document</td></tr>
+      <tr><td>Stock Adjustment</td><td>Write-down <code>Dr Shrinkage / Cr Inventory</code>; write-up reverses. <strong>Currently blocked — see G1</strong></td></tr>
+      <tr><td>Physical Count</td><td>Variance <strong>posts an adjustment</strong>. Must never silently overwrite the quantity — the discrepancy is the point</td></tr>
+      <tr><td>Stock Transfer</td><td>Moves quantity between locations. <strong>No P&amp;L impact</strong>, no change to total value — verify valuation is identical before and after</td></tr>
+      <tr><td>Cost method</td><td>FIFO / LIFO / Average offered; only weighted-average is confirmed. Buy 10@100 then 10@120, sell 1 — FIFO should give COGS 100. If it gives 110, the setting is cosmetic</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Warehouse agencies</h3>
+  <p>More → Warehouse Agencies. Secondary stock locations with their own inventory and a sync flow. Items tag to an agency on the item form. Test: create an agency, tag an item, run a sync, confirm quantities reconcile and that syncing <strong>does not create or destroy value</strong>.</p>
+
+  <h3>Sales orders &amp; estimates</h3>
+  <p><strong>Estimates</strong> are quotes — non-posting, convert to Invoice or Sales Order. <strong>Sales Orders</strong> are confirmed orders — non-posting, created automatically when you assign a delivery, converting to an invoice on fulfilment. Key check: neither ever touches the ledger on its own. Revenue appears only when an <strong>invoice</strong> exists.</p>
+
+  <h3>The accounting core</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Feature</th><th>Expected journal entry</th></tr></thead>
+    <tbody>
+      <tr><td>Invoice</td><td><code>Dr A/R / Cr Sales (+ Cr Tax)</code>; for stocked goods also <code>Dr COGS / Cr Inventory</code></td></tr>
+      <tr><td>Receive Payment</td><td><code>Dr Bank / Cr A/R</code>. <strong>P&amp;L must not move</strong></td></tr>
+      <tr><td>Bill</td><td><code>Dr Expense or Inventory / Cr A/P (+ Dr Recoverable Tax)</code></td></tr>
+      <tr><td>Pay Bills</td><td><code>Dr A/P / Cr Bank</code>. <strong>P&amp;L must not move</strong></td></tr>
+      <tr><td>General Journal</td><td>Must <strong>reject</strong> an unbalanced entry, require ≥2 lines, refuse a line with both debit and credit</td></tr>
+      <tr><td>Chart of Accounts</td><td>An account with activity must not be deletable</td></tr>
+      <tr><td>Tax</td><td>Tax collected accumulates as a liability; paying it <code>Dr Tax Payable / Cr Bank</code></td></tr>
+      <tr><td>Bank Reconciliation</td><td><strong>Non-posting</strong> — marks lines cleared. Unreconciled difference must reach zero</td></tr>
+      <tr><td>Payroll</td><td>Gross to expense, deductions to liabilities, net to Bank. Verify gross = net + deductions</td></tr>
+      <tr><td>Budgets</td><td><strong>Non-posting</strong> — a reporting overlay only</td></tr>
+      <tr><td>Period close</td><td>Locks the books to a date; earlier postings must be <strong>refused</strong>. Never exercised in production — test deliberately</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Dashboards, search, settings</h3>
+  <ul>
+    <li><strong>Admin Dashboard</strong> — KPI cards must agree with the reports they summarise. A dashboard that disagrees with the P&amp;L is a bug.</li>
+    <li><strong>Global Search</strong> — finds invoices, customers, vendors, items, deliveries; nothing from other companies</li>
+    <li><strong>Subscription</strong> — renew / change plan → payment submission → super-admin verification</li>
+    <li><strong>Delivery Monitor</strong> — stats, filters (All / Pending / In Transit / Delivered / Failed / Returned), sort (Time / Status / Priority), rider map</li>
+    <li><strong>Rider GPS</strong> — with tracking on, position appears on the monitor map; location history retrievable per delivery</li>
+  </ul>
+</section>
+
+<!-- ══════════ PART G ══════════ -->
+<section id="g">
+  <div class="part-head"><span class="k">PART G</span><h2>What is fixed, and what is still open</h2></div>
+
+  <div class="note">
+    <h4>Read this before filing anything</h4>
+    <p>The 🚩 red flags throughout Part C are <strong>conditions that would indicate a bug</strong> — not a list of bugs that exist. Nearly all of them are asserted automatically by the acceptance suites, which is exactly why a disagreement between this guide and what you see on screen is worth reporting.</p>
+  </div>
+
+  <h3>Fixed since the last revision</h3>
+  <p>Kept here because knowing what was broken is the fastest way to know what to check in the replacement — and because older scripts and screenshots still describe the broken behaviour.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Was</th><th>Now</th><th>Test with</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Stock Adjustment could not be saved</strong> — the reason dropdown was empty, so validation never passed</td><td>Six reasons, and the screen sends the <strong>absolute</strong> new quantity the API expects</td><td>C11</td></tr>
+      <tr><td><strong>Riders could not record returns or partial deliveries</strong> — every line was hard-coded to fully delivered</td><td>Per-line returned-quantity box; the approval queue’s Returned column reflects it</td><td>C13</td></tr>
+      <tr><td><strong>Reassign and Cancel did not persist</strong> — local-only, and Cancel wrote <code>failed</code></td><td>Both call the API; Cancel writes <code>cancelled</code> and triggers the restock and ledger reversal</td><td>C14</td></tr>
+      <tr><td><strong>Physical Count looped one call per line</strong> — a failure halfway left the count half-applied</td><td>One atomic request; adjustments and journal entries post in a single transaction</td><td>C12</td></tr>
+      <tr><td><strong>Pre-paid partial returns overstated revenue</strong> — goods came back, revenue and tax stayed at 100%</td><td>A credit memo is raised for the undelivered value at approval</td><td>C10</td></tr>
+      <tr><td><strong>A deleted default company locked the user out</strong> — sign-in returned no company at all, and every request answered <code>NOT_COMPANY_MEMBER</code></td><td>Sign-in falls back to any valid membership and repairs the stale pointer</td><td><code>bankrec</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Also closed since the original audit: the ledger now has <strong>database-level CHECK constraints</strong>, the <strong>audit trail has a writer</strong>, <strong>period close</strong> is implemented and tier-gated, and there are <strong>13 acceptance suites</strong> plus a 14-invariant SQL gate. Any older document saying “no automated test covers any accounting behaviour” is out of date.</p>
+
+  <h3>Still open</h3>
+
+  <div class="flag">
+    <h4>Correction paths are proven by tests, not by production use</h4>
+    <p>Credit memos, vendor credits, adjustments and tax payments all have acceptance coverage and a reversal path. But very little of it has been run by a real user on real data — C8, C9 and C11 may still be among the first genuine uses. Report anything you find in detail.</p>
+  </div>
+
+  <div class="flag">
+    <h4>A refund owed to a customer sits in Accounts Receivable</h4>
+    <p>When a credit is raised for someone who already paid — a pre-paid partial return, say — it lands as a negative balance in A/R rather than as a liability. This is how QuickBooks and Xero treat unapplied credits and the books still balance, but on a formal balance sheet a net credit in A/R belongs on the liability side. Worth knowing before presenting statements; not a blocker.</p>
+  </div>
+
+  <div class="flag">
+    <h4>Returned and damaged goods are indistinguishable</h4>
+    <p>Everything a rider does not deliver goes back on the shelf as good stock. If it came back damaged, the books say you own sellable inventory you do not. The workaround is deliberate: accept the return, then write the damage off with a Stock Adjustment (C11, reason <strong>Damage</strong>) so the loss lands in shrinkage instead of hiding in inventory.</p>
+  </div>
+
+  <h3>Three traps in the test harness</h3>
+  <p>Not product defects — ways the <strong>suites themselves</strong> will mislead or damage you. All three found the hard way.</p>
+
+  <div class="gap">
+    <h4>1 · auth-gate points at PRODUCTION by default</h4>
+    <p><code>API_BASE</code> defaults to the live Heroku URL, and the suite <strong>deactivates and reactivates a real company</strong>. Always export <code>API_BASE=http://localhost:3000/api/v1</code> before running it.</p>
+  </div>
+
+  <div class="gap">
+    <h4>2 · bankrec runs unscoped UPDATEs</h4>
+    <p>Before anything else it runs, with <strong>no WHERE clause</strong>:</p>
+    <div class="je">UPDATE users     SET is_email_verified = true;
+UPDATE companies SET status = 'approved';</div>
+    <p>That verifies every user and approves every company in whatever <code>DATABASE_URL</code> points at. Throwaway databases only. It also needs <code>npm run seed:demo</code> first, or it dies with <code>acctList.map is not a function</code>.</p>
+  </div>
+
+  <div class="gap">
+    <h4>3 · The sign-in throttle makes back-to-back suites fail on nothing</h4>
+    <p><code>/auth/signin</code> is capped at <strong>5 per minute</strong>. Run suites in a tight loop and the later ones cannot log in and report failures unrelated to the code — one run produced 38 × <code>429</code>. <strong>Space them ~60 seconds apart</strong>, and re-run any unexplained failure in isolation before believing it.</p>
+    <p>The suites also disagree on summary format: most print <code>=== N passed, M failed ===</code>, but <code>auth-gate</code> prints a bare <code>N passed, M failed</code> and <code>bankrec</code> prints <code>✓ ALL PASS: …</code>. A script grepping only for <code>===</code> reports nothing for those two and they look like they never ran.</p>
+  </div>
+  <div class="gap">
+    <h4>4 · chunk1 permanently breaks invariant I13 on whatever database it touches</h4>
+    <p>It stocks its test item with raw SQL, straight past the API and therefore past the ledger:</p>
+    <div class="je">await pg.query(`UPDATE inventory_items SET quantity_on_hand = 50 WHERE id = $1`, [itemId]);</div>
+    <p>That is 50 × 100 = <strong>5,000 of inventory value with no journal entry</strong> — precisely the shortcut C1 warns you never to take. The company it creates then fails I13 <strong>forever</strong>, so <code>qa/run-qa.sh</code> reads red afterwards and looks like an accounting bug when the books are fine.</p>
+    <p>If the gate fails after a battery run, check <em>which</em> company drifted before chasing it. Scope I13 to exclude the suite’s throwaway companies and it comes back clean — that is the difference between a real defect and test residue. <code>bankrec</code> has a milder version: it is <strong>not re-runnable</strong> against a database it has already reconciled, which is why it scores 41/41 clean and 32/9 dirty.</p>
+  </div>
+
+  <div class="note">
+    <h4>And one suite that no longer describes this build</h4>
+    <p><code>tiering</code> asserts a three-tier plan catalogue — <code>warehouse_3mo</code>, <code>small_business_6mo</code> and so on. This build ships <strong>warehouse-only</strong> with a redesigned catalogue (starter / growth / scale, each 6-month and 1-year), and the other two tiers have no plans at all. Its 17 failures are that mismatch, not defects.</p>
+  </div>
+
+  <h3>Measured, not asserted</h3>
+  <p>Every suite below was run individually against a live server, spaced past the sign-in throttle:</p>
+  <div class="figs">
+    <div class="fig"><span class="lbl">chunk1</span><span class="val">58</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">chunk2</span><span class="val">89</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">delivery-ledger</span><span class="val">83</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">corrections</span><span class="val">105</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">voids</span><span class="val">107</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">period-close</span><span class="val">40</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">five-features</span><span class="val">50</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">auth-gate</span><span class="val">10</span><span class="sub">0 failed</span></div>
+    <div class="fig"><span class="lbl">bankrec</span><span class="val">41</span><span class="sub">0 failed · clean DB</span></div>
+  </div>
+
+</section>
+
+<!-- ══════════ PART H ══════════ -->
+<section id="h">
+  <div class="part-head"><span class="k">PART H</span><h2>Bug reporting &amp; sign-off</h2></div>
+
+  <h3>Bug template</h3>
+<div class="je">TITLE:     [Module] Short description of the wrong behaviour
+
+LOGIN:     warehouse@gmail.com  /  rider1@warehouseco.com
+STEP:      Guide step (e.g. C4d — approving a PAID delivery)
+DEVICE:    Android / iOS / Web, app version
+
+WHAT I DID:
+  1. …
+  2. …
+
+EXPECTED:  Dr COGS 16,000 / Cr Goods in Transit 16,000
+ACTUAL:    Dr COGS 20,000 / Cr Goods in Transit 20,000  (costed at selling price)
+
+LEDGER EVIDENCE
+  Before:  Inventory 140,000 · GIT 16,000 · COGS 0
+  After:   Inventory 140,000 · GIT      0 · COGS 20,000
+  Trial Balance: debits 1,234,567 vs credits 1,234,567  (balanced / UNBALANCED)
+
+SCREENSHOT: Trial Balance + the report showing the wrong number</div>
+  <p><strong>Always include the ledger evidence.</strong> “The approval screen looked wrong” is a UI report. “COGS posted at 20,000 instead of 16,000, and here is the Trial Balance” is an accounting bug report — and that is the kind that gets fixed.</p>
+
+  <h3>Sign-off checklist</h3>
+  <ul class="check">
+    <li><strong>Step 0</strong> snapshot taken and Trial Balance balanced <em>before</em> testing</li>
+    <li><strong>C1</strong> — master data creates zero ledger movement</li>
+    <li><strong>C2</strong> — PO posts nothing; receipt posts <code>Dr Inventory / Cr GRNI</code>; bill posts <code>Dr GRNI / Cr A/P</code>; GRNI = 0; Inventory did not move twice</li>
+    <li><strong>C2 variant</strong> — partial receipt correct across two receipts</li>
+    <li><strong>C3</strong> — rider created; plan limit enforced clearly; deactivation frees a slot</li>
+    <li><strong>C4</strong> — dispatch moves cost to GIT with no revenue; rider actions post nothing; approval posts revenue <em>and</em> COGS; GIT = 0</li>
+    <li><strong>C5</strong> — credit sale lands in A/R; later payment moves Bank/A/R with no P&amp;L change</li>
+    <li><strong>C6</strong> — rejection restores Inventory, clears GIT, creates no Sales or COGS</li>
+    <li><strong>C7</strong> — double approval cannot double-post; Undo reverses rather than deletes; over-allocation rejected; stock never negative</li>
+    <li><strong>C8</strong> — credit memo mirrors the sale, restocks inventory, reverses COGS and tax, original invoice intact</li>
+    <li><strong>C9</strong> — vendor credit reduces A/P and Inventory with no P&amp;L impact; original bill intact</li>
+    <li><strong>D</strong> — every report reconciles; every account matches snapshot + delta; Inventory = Valuation = 108,000 delta; all five invariants hold</li>
+    <li><strong>E</strong> — riders see only their own deliveries; every accounting endpoint returns 403; tenancy holds</li>
+    <li><strong>G</strong> — known gaps confirmed as still-known, not silently worsened</li>
+  </ul>
+
+  <h3>Quick reference</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Number</th><th>Must be</th><th>If it isn’t</th></tr></thead>
+    <tbody>
+      <tr><td>Trial Balance debits − credits</td><td class="num"><strong>0</strong></td><td>Stop everything. The ledger is broken</td></tr>
+      <tr><td>GRNI after a complete purchase cycle</td><td class="num"><strong>0</strong></td><td>Goods received twice, billed twice, or never billed</td></tr>
+      <tr><td>Goods in Transit for a finished delivery</td><td class="num"><strong>0</strong></td><td>Stock value stranded on a van</td></tr>
+      <tr><td>Inventory ledger − Valuation report</td><td class="num"><strong>0</strong></td><td>Subledger and ledger disagree</td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>The three things that must never happen:</strong> revenue recognised before delivery <em>and</em> approval; a rider posting anything to the ledger; any document edited or deleted instead of offset by a correcting entry.</p>
+</section>
+
+</main>
+
+<footer>
+  <p><strong>Related documents</strong> — <em>ACCOUNTING_QA_GUIDE.md</em> (ledger audit, SQL invariants, accounting protocol) · <em>CREDENTIALS.md</em> (all demo logins) · <em>PLAN_LIMITS.md</em> (what’s metered and why) · <em>APP_GUIDE.md</em> (app overview).</p>
+  <p>FinMatrix warehouse build · runbook written 14 Aug 2026.</p>
+</footer>
+
+</div>
