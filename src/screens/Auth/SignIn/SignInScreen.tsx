@@ -1,35 +1,39 @@
 // ═══════════════════════════════════════════════════════
-// FinMatrix — Sign In
+// FinMatrix Admin — Sign In
 // ═══════════════════════════════════════════════════════
-// Serves both portals: `role === 'delivery'` signs in with a username against
-// the delivery endpoint, everyone else with an email. The server's gate codes
-// (unverified email, pending/rejected/inactive company) route to the matching
-// screen rather than surfacing as a generic error.
+// One portal, one credential shape: a platform admin's email and password.
+// The tenant app serves staff and riders from this same screen behind a portal
+// tab strip and routes the server's company gate codes (unverified email,
+// pending/rejected/inactive company) to the screen that explains each one. None
+// of that applies here — a platform admin has no company — so a gate code that
+// somehow arrives is shown as a plain authentication failure.
+//
+// The request still sends portal: 'admin'. That is the door the server already
+// admits both company owners and the platform console through; the role check
+// below is what keeps owners out of this app.
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { ROUTES } from '../../../navigations-maps/Base';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
-import { setUser, selectSelectedRole } from '../authSlice';
+import { setUser } from '../authSlice';
 import {
   setEmail,
-  setUsername,
   setPassword,
   setRememberMe,
   clearSignInError,
   submitSignInAsync,
-  submitDeliverySignInAsync,
   selectSignInEmail,
-  selectSignInUsername,
   selectSignInPassword,
   selectSignInRememberMe,
   selectSignInStatus,
   selectSignInError
 } from './signInSlice';
-import { validateSignIn, validateDeliverySignIn } from '../../../models/authModel';
-import type { RootStackParamList, UserRole } from '../../../types';
+import { validateSignIn } from '../../../models/authModel';
+import { clearTokens } from '../../../utils/storageUtils';
+import type { RootStackParamList } from '../../../types';
 import { THEME } from '../../../theme';
 
 // Design-system tokens (see src/theme/theme.ts).
@@ -43,42 +47,29 @@ import {
   AUTH
 } from '../../../components/auth/AuthUI';
 
+const WRONG_APP_MESSAGE =
+  'This console is for platform administrators. Please use the FinMatrix app to sign in to your business account.';
+
 type Props = NativeStackScreenProps<RootStackParamList, 'SignIn'>;
 
-const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
+const SignInScreen: React.FC<Props> = ({ navigation }) => {
   const dispatch = useAppDispatch();
-  // Never destructure route.params directly: screens that send the user back
-  // here (password reset, "Back to Sign In") pass no params, and RN v7 pushes
-  // a fresh route rather than reusing the one RoleSelection created. Fall back
-  // to the role the user picked on RoleSelection so a delivery user isn't
-  // silently downgraded to the admin portal.
-  const selectedRole = useAppSelector(selectSelectedRole);
-  const role: UserRole = route.params?.role ?? selectedRole ?? 'admin';
 
   const email = useAppSelector(selectSignInEmail);
-  const username = useAppSelector(selectSignInUsername);
   const password = useAppSelector(selectSignInPassword);
   const rememberMe = useAppSelector(selectSignInRememberMe);
   const status = useAppSelector(selectSignInStatus);
   const signInError = useAppSelector(selectSignInError);
 
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  // Set when the credentials were valid but the account is not a console
+  // account. The slice's own error covers every failure the THUNK saw; this
+  // covers the one we reject after it succeeded.
+  const [gateError, setGateError] = React.useState('');
 
   // useMemo, not useRef: reading .current during render is what the React
   // refs lint rule forbids, and the value is create-once either way.
   const shakeAnim = useMemo(() => new Animated.Value(0), []);
-
-  // Owner-created accounts — staff and riders — both sign in with a username
-  // and a password their company handed them, against the same endpoint. The
-  // tab below only sets expectations and wording: the SERVER decides the
-  // actual role from the account, so picking the wrong tab still signs the
-  // user into the right app.
-  const isUserPortal = role === 'delivery' || role === 'staff';
-  const [portalTab, setPortalTab] = React.useState<'staff' | 'delivery'>(
-    role === 'delivery' ? 'delivery' : 'staff',
-  );
-  const isDelivery = isUserPortal;
-  const roleLabel = isUserPortal ? 'User Portal' : 'Business Portal';
 
   // A short nudge on validation failure — the one motion in the flow, and it
   // carries meaning rather than decorating the entrance.
@@ -93,24 +84,7 @@ const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const handleSignIn = async () => {
     dispatch(clearSignInError());
-
-    if (isDelivery) {
-      const validationErrors = validateDeliverySignIn({ username, password });
-      setErrors(validationErrors);
-      if (Object.keys(validationErrors).length > 0) {
-        triggerShake();
-        return;
-      }
-      try {
-        const user = await dispatch(
-          submitDeliverySignInAsync({ username: username.trim(), password }),
-        ).unwrap();
-        dispatch(setUser(user));
-      } catch {
-        /* handled by slice */
-      }
-      return;
-    }
+    setGateError('');
 
     const validationErrors = validateSignIn({ email, password });
     setErrors(validationErrors);
@@ -122,47 +96,38 @@ const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
       const user = await dispatch(
         submitSignInAsync({ email: email.trim(), password }),
       ).unwrap();
-      dispatch(setUser(user));
-    } catch (err) {
-      const e = err as {
-        code?: string;
-        rejectionReason?: string | null;
-        pendingKind?: 'trial' | 'payment' | null;
-      };
-      // Route the server's gate codes to the screen that explains them.
-      if (e?.code === 'EMAIL_NOT_VERIFIED') {
-        navigation.navigate('EmailVerification', { email: email.trim() });
-      } else if (e?.code === 'COMPANY_PENDING') {
-        navigation.navigate('PendingApproval', {
-          fromLogin: true,
-          pendingKind: e?.pendingKind ?? undefined,
-        });
-      } else if (e?.code === 'COMPANY_INACTIVE') {
-        navigation.navigate('CompanyRejected', { fromLogin: true, mode: 'inactive' });
-      } else if (e?.code === 'COMPANY_REJECTED') {
-        navigation.navigate('CompanyRejected', {
-          fromLogin: true,
-          mode: 'rejected',
-          reason: e?.rejectionReason ?? undefined,
-        });
+
+      // THE gate for this app. The server issues a valid token to any owner
+      // who signs in through the admin portal, so without this a company owner
+      // would land inside the platform console. Reject BEFORE setUser: once the
+      // user reaches Redux the navigator has already swapped.
+      if (user.role !== 'super_admin') {
+        void clearTokens();
+        setGateError(WRONG_APP_MESSAGE);
+        triggerShake();
+        return;
       }
-      /* other errors handled by slice */
+
+      dispatch(setUser(user));
+    } catch {
+      // Every failure the thunk saw is already in `signInError`. The tenant
+      // app additionally routes COMPANY_PENDING / COMPANY_INACTIVE /
+      // COMPANY_REJECTED / EMAIL_NOT_VERIFIED to dedicated screens; the
+      // console has no such screens and no company, so they surface as a
+      // plain authentication failure.
     }
   };
 
   const isLoading = status === 'loading';
+  const notice = gateError || signInError;
 
   return (
     <AuthLayout
       header={
         <AuthHeader
-          pill={roleLabel}
+          pill="Platform Console"
           title="Welcome back"
-          subtitle={
-            isDelivery
-              ? 'Sign in with your company credentials'
-              : 'Sign in to manage your business'
-          }
+          subtitle="Sign in to manage the FinMatrix platform"
         />
       }
       footer={
@@ -177,68 +142,24 @@ const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
         />
       }>
       <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-        {signInError ? (
-          <AuthNotice tone="error" title="Authentication failed" message={signInError} />
+        {notice ? (
+          <AuthNotice tone="error" title="Authentication failed" message={notice} />
         ) : null}
 
-        {isUserPortal ? (
-          <View style={s.portalTabs}>
-            {(
-              [
-                { key: 'staff' as const, label: 'Staff' },
-                { key: 'delivery' as const, label: 'Delivery Personnel' },
-              ]
-            ).map(t => (
-              <TouchableOpacity
-                key={t.key}
-                style={[
-                  s.portalTab,
-                  portalTab === t.key && s.portalTabActive,
-                ]}
-                onPress={() => setPortalTab(t.key)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    s.portalTabText,
-                    portalTab === t.key && s.portalTabTextActive,
-                  ]}
-                >
-                  {t.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-
-        {isDelivery ? (
-          <AuthField
-            label="Username"
-            value={username}
-            onChangeText={t => {
-              dispatch(setUsername(t));
-              if (errors.username) setErrors(p => ({ ...p, username: '' }));
-            }}
-            placeholder="Enter your username"
-            autoCapitalize="none"
-            autoCorrect={false}
-            error={errors.username}
-          />
-        ) : (
-          <AuthField
-            label="Email address"
-            value={email}
-            onChangeText={t => {
-              dispatch(setEmail(t));
-              if (errors.email) setErrors(p => ({ ...p, email: '' }));
-            }}
-            placeholder="name@company.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            error={errors.email}
-          />
-        )}
+        <AuthField
+          label="Email address"
+          value={email}
+          onChangeText={t => {
+            dispatch(setEmail(t));
+            if (errors.email) setErrors(p => ({ ...p, email: '' }));
+            if (gateError) setGateError('');
+          }}
+          placeholder="name@company.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          error={errors.email}
+        />
 
         <AuthField
           label="Password"
@@ -246,6 +167,7 @@ const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
           onChangeText={t => {
             dispatch(setPassword(t));
             if (errors.password) setErrors(p => ({ ...p, password: '' }));
+            if (gateError) setGateError('');
           }}
           placeholder="Enter your password"
           secure
@@ -268,55 +190,19 @@ const SignInScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={s.remLabel}>Remember me</Text>
           </Pressable>
 
-          {!isDelivery && (
-            <Text
-              style={s.link}
-              onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD)}
-              accessibilityRole="button">
-              Forgot password?
-            </Text>
-          )}
+          <Text
+            style={s.link}
+            onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD)}
+            accessibilityRole="button">
+            Forgot password?
+          </Text>
         </View>
-
-        {!isDelivery && (
-          <View style={s.bottomRow}>
-            <Text style={s.bottomText}>Don&apos;t have an account? </Text>
-            <Text
-              style={s.link}
-              onPress={() => navigation.navigate(ROUTES.SIGN_UP, { role })}
-              accessibilityRole="button">
-              Create account
-            </Text>
-          </View>
-        )}
       </Animated.View>
     </AuthLayout>
   );
 };
 
 const s = StyleSheet.create({
-  // Which portal the user is signing into. Cosmetic: the server resolves the
-  // real role from the account either way.
-  portalTabs: {
-    flexDirection: 'row',
-    gap: AUTH.space.sm,
-    marginBottom: AUTH.space.lg,
-  },
-  portalTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: AUTH.space.md,
-    borderRadius: AUTH.radius.md,
-    borderWidth: 1,
-    borderColor: AUTH.line,
-    backgroundColor: AUTH.surface,
-  },
-  portalTabActive: {
-    borderColor: AUTH.mintBorder,
-    backgroundColor: AUTH.mint,
-  },
-  portalTabText: { ...THEME.typography.labelMd, color: AUTH.ink[500] },
-  portalTabTextActive: { color: AUTH.brandDark },
   optRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -340,14 +226,6 @@ const s = StyleSheet.create({
     fontFamily: AUTH.font,
     color: AUTH.brand,
   },
-  bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    marginTop: AUTH.space.xxl,
-  },
-  bottomText: { ...THEME.typography.bodySm, fontFamily: AUTH.font, color: AUTH.ink[500] }
 });
 
 export default SignInScreen;

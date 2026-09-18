@@ -173,8 +173,10 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
       setNotice('');
       return;
     }
+    // Was 'RoleSelection' in the tenant app, which the console does not have:
+    // there is one portal here, so sign-in is the only thing behind this form.
     if (navigation.canGoBack()) navigation.goBack();
-    else navigation.navigate('RoleSelection');
+    else navigation.navigate('SignIn', { role });
   };
 
   const clearError = () => {

@@ -817,40 +817,19 @@ export interface AuditEntry {
 }
 
 // ─── Navigation Params ────────────────────────────────
+// The console's unauthenticated stack, and nothing else.
+//
+// Keep this one honest. Unlike the dead domain interfaces above — which are
+// erased at build time and cost nothing — a stale route here is not free: it
+// makes navigate('PendingApproval') type-check against a screen that no longer
+// exists, turning a compile error into a runtime crash. The console's own tabs
+// are typed separately, by SuperAdminTabParamList in navigators/.
 export type RootStackParamList = {
-  Splash: undefined;
-  Onboarding: undefined;
-  RoleSelection: undefined;
-  // `role` is optional because several screens legitimately return the user to
-  // sign-in without one (password reset, "Back to Sign In", sign-out). Under
-  // React Navigation v7 a navigate() to a non-focused route PUSHES a fresh
-  // route rather than reusing the existing one, so its params are exactly what
-  // the caller passed — declaring `role` required made those call sites lie and
-  // crashed the destructure in the screen.
+  // `role` is optional because the password-reset flow returns the user to
+  // sign-in without one. Under React Navigation v7 a navigate() to a
+  // non-focused route PUSHES a fresh route rather than reusing the existing
+  // one, so its params are exactly what the caller passed — declaring `role`
+  // required made those call sites lie and crashed the destructure.
   SignIn: { role?: UserRole } | undefined;
-  SignUp: { role?: UserRole } | undefined;
   ForgotPassword: undefined;
-  EmailVerification: { email?: string; token?: string } | undefined;
-  CompanySetup: undefined;
-  CompanyTypeSelect: undefined;
-  CreateCompany: { companyType?: 'small_business' | 'large_org' | 'warehouse' } | undefined;
-  JoinCompany: undefined;
-  DeliveryOnboarding: undefined;
-  PendingApproval: { fromLogin?: boolean; pendingKind?: 'trial' | 'payment' } | undefined;
-  CompanyRejected: { fromLogin?: boolean; mode?: 'rejected' | 'inactive'; reason?: string } | undefined;
-  AdminTabs: undefined;
-  DeliveryTabs: undefined;
-  SuperAdminTabs: undefined;
-  SubscriptionSelect: { companyId?: string; companyType?: string } | undefined;
-  RenewSubscription: { mode?: 'renew' | 'change' } | undefined;
-  SubscriptionPay: { plan: string; mode?: 'renew' | 'change' | 'signup'; companyId?: string };
-  PaymentSubmissions: undefined;
-  DeliveryPersonnelList: undefined;
-  AddDeliveryPersonnel: undefined;
-  DeliveryPersonnelDetail: { userId: string };
-  AssignDeliveries: undefined;
-  CreateDelivery: undefined;
-  AssignWork: undefined;
-  DeliveryMonitor: undefined;
-  AdminDeliveryDetail: { deliveryId: string };
 };
