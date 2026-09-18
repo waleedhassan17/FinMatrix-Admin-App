@@ -7,7 +7,8 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 // The header pulls the Redux store; the queue under test does not need it.
 jest.mock('../../../../components/admin/AdminUI', () => ({ AdminScreenHeader: 'AdminScreenHeader' }));
-jest.mock('../../../../components/reports/ReportUI', () => ({ HEADER_NAVY: ['#000', '#111'] }));
+// HEADER_NAVY now comes straight from the theme, which is a pure token module
+// with no store behind it — nothing left here to stub.
 jest.mock('../../../../utils/alert', () => ({ Alert: { alert: jest.fn() } }));
 // useFocusEffect needs a navigator; under test, "focused" means "mounted".
 jest.mock('@react-navigation/native', () => {

@@ -429,6 +429,24 @@ export const HEADER_BG = '#111D28';
 export const HEADER_RADIUS = 26;
 export const HEADER_NAVY = [HEADER_BG, HEADER_BG] as const;
 
+/**
+ * Categorical series palette — one colour per series, in order.
+ *
+ * This lived in components/reports/ReportUI in the tenant app, which meant any
+ * screen that wanted six chart colours had to import the whole reports kit —
+ * and, through it, the active-company slice. It is a palette; it belongs with
+ * the palette. Consumers index it modulo its length, so the order is what
+ * decides which two series can end up adjacent.
+ */
+export const CHART_SERIES = [
+  colors.primary,
+  colors.info,
+  colors.secondary,
+  colors.warning,
+  colors.primary,
+  colors.danger,
+];
+
 // ───────────────────────────────────────────────
 // 6b. Status colours — one resolver for the whole app
 // ───────────────────────────────────────────────

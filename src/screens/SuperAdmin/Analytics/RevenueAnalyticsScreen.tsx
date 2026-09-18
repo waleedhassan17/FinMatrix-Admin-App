@@ -22,9 +22,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
-import { THEME, statusStyle } from '../../../theme';
+import { THEME, statusStyle, CHART_SERIES } from '../../../theme';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
-import { CHART_SERIES } from '../../../components/reports/ReportUI';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;

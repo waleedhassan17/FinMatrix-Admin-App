@@ -30,8 +30,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { HEADER_NAVY } from '../../../components/reports/ReportUI';
-import { THEME, statusStyle } from '../../../theme';
+import { THEME, statusStyle, HEADER_NAVY } from '../../../theme';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
 
 // Design-system tokens (see src/theme/theme.ts).
