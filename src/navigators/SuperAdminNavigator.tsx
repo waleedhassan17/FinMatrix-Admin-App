@@ -6,19 +6,34 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 
 import SuperAdminDashboardScreen from '../screens/SuperAdmin/SuperAdminDashboardScreen';
-import CompanyManagementScreen from '../screens/SuperAdmin/CompanyManagement/CompanyManagementScreen';
+import CompaniesStackNavigator, {
+  type CompaniesStackParamList,
+} from './CompaniesStackNavigator';
 import RevenueAnalyticsScreen from '../screens/SuperAdmin/Analytics/RevenueAnalyticsScreen';
 import SubscriptionPlansScreen from '../screens/SuperAdmin/SubscriptionPlans/SubscriptionPlansScreen';
 import PaymentSubmissionsScreen from '../screens/SuperAdmin/PaymentSubmissions/PaymentSubmissionsScreen';
 import AdminSettingsScreen from '../screens/SuperAdmin/AdminSettings/AdminSettingsScreen';
 import { THEME } from '../theme';
 
+/**
+ * Companies is a NESTED NAVIGATOR now, and its entry is typed to say so.
+ *
+ * That matters at every call site: navigating to the tab with bare params
+ * delivers them to the navigator rather than to a screen, and they vanish.
+ * Anything wanting the list filtered has to name the screen:
+ *
+ *   navigate('Companies', { screen: 'CompanyList', params: { filter } })
+ *
+ * NavigatorScreenParams is what makes the compiler enforce that, instead of
+ * the `as any` casts the dashboard used to reach these tabs through.
+ */
 export type SuperAdminTabParamList = {
   Dashboard: undefined;
-  Companies: { filter?: string; focusId?: string } | undefined;
+  Companies: NavigatorScreenParams<CompaniesStackParamList> | undefined;
   Payments: undefined;
   Analytics: undefined;
   Plans: undefined;
@@ -71,7 +86,7 @@ const SuperAdminNavigator: React.FC = () => (
     })}
   >
     <Tab.Screen name="Dashboard" component={SuperAdminDashboardScreen} />
-    <Tab.Screen name="Companies" component={CompanyManagementScreen} />
+    <Tab.Screen name="Companies" component={CompaniesStackNavigator} />
     <Tab.Screen name="Payments" component={PaymentSubmissionsScreen} />
     <Tab.Screen name="Analytics" component={RevenueAnalyticsScreen} />
     <Tab.Screen name="Plans" component={SubscriptionPlansScreen} />

@@ -107,7 +107,10 @@ const SidebarDrawer: React.FC<{
                 style={S.drawerItem}
                 onPress={() => {
                   onClose();
-                  setTimeout(() => navigation.navigate(item.screen as any), 150);
+                  setTimeout(
+                    () => navigation.navigate(item.screen as never),
+                    150,
+                  );
                 }}
                 activeOpacity={0.7}
               >
@@ -297,7 +300,15 @@ const SuperAdminDashboardScreen: React.FC = () => {
             <View style={S.actionsRow}>
               <TouchableOpacity
                 style={S.actionCard}
-                onPress={() => navigation.navigate('Companies' as any)}
+                // Was identical to "All Companies" beside it -- two tiles, one
+                // destination. A tile with a pending badge should land on the
+                // pending queue.
+                onPress={() =>
+                  navigation.navigate('Companies', {
+                    screen: 'CompanyList',
+                    params: { filter: 'pending' },
+                  })
+                }
                 activeOpacity={0.75}
               >
                 <View style={S.actionSurface}>
@@ -315,7 +326,9 @@ const SuperAdminDashboardScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={S.actionCard}
-                onPress={() => navigation.navigate('Companies' as any)}
+                onPress={() =>
+                  navigation.navigate('Companies', { screen: 'CompanyList' })
+                }
                 activeOpacity={0.75}
               >
                 <View style={S.actionSurface}>
@@ -328,7 +341,7 @@ const SuperAdminDashboardScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={S.actionCard}
-                onPress={() => navigation.navigate('Plans' as any)}
+                onPress={() => navigation.navigate('Plans')}
                 activeOpacity={0.75}
               >
                 <View style={S.actionSurface}>
@@ -345,22 +358,32 @@ const SuperAdminDashboardScreen: React.FC = () => {
               <>
                 <View style={S.sectionHeader}>
                   <Text style={S.sectionTitle}>Recent Registrations</Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('Companies' as any)}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('Companies', { screen: 'CompanyList' })
+                    }
+                  >
                     <Text style={S.seeAllText}>See All →</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={S.card}>
-                  {stats.recentRegistrations.map((item, idx) => (
+                  {stats.recentRegistrations.map(item => (
                     <DataTableRow
                       key={item.id}
                       initials={item.name}
                       title={item.name}
                       meta={item.industry ?? 'General'}
                       status={item.status}
+                      // Opens that company rather than the bare list. Tapping a
+                      // named row and landing on an unfiltered index is the
+                      // kind of thing that reads as a broken link.
                       onPress={() =>
-                        navigation.navigate('Companies' as any)
+                        navigation.navigate('Companies', {
+                          screen: 'CompanyDetail',
+                          params: { id: item.id, name: item.name },
+                        })
                       }
-                      />
+                    />
                   ))}
                 </View>
               </>

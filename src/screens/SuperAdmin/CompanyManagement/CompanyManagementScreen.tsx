@@ -24,6 +24,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { CompaniesStackParamList } from '../../../navigators/CompaniesStackNavigator';
 
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
@@ -41,10 +42,12 @@ import {
   loadPlatformStats,
   updateCompanyStatusLocal,
   setCompaniesFilter,
+  setCompaniesTrial,
   selectCompanies,
   selectCompaniesTotal,
   selectCompaniesStatus,
   selectCompaniesFilter,
+  selectCompaniesTrial,
   selectCompaniesError,
   selectPlatformStats,
   type CompanyListItem,
@@ -56,6 +59,14 @@ const FILTERS = [
   { label: 'Active', value: 'active' },
   { label: 'Inactive', value: 'inactive' },
   { label: 'Rejected', value: 'rejected' },
+];
+
+// The server takes ?isTrial=true|false and ignores anything else; `all` means
+// send no param, matching how the status filter treats 'all'.
+const TRIAL_FILTERS: { label: string; value: boolean | undefined }[] = [
+  { label: 'All', value: undefined },
+  { label: 'On trial', value: true },
+  { label: 'Never on trial', value: false },
 ];
 
 const REJECT_REASONS = [
@@ -335,8 +346,11 @@ const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({
 // ── Company Card ──────────────────────────────────────
 const CompanyCard: React.FC<{
   company: CompanyListItem;
+  /** Opens the full record. */
   onPress: () => void;
-}> = ({ company, onPress }) => {
+  /** Opens the quick-decision modal, without leaving the queue. */
+  onReview: () => void;
+}> = ({ company, onPress, onReview }) => {
   const cfg = statusStyle(company.status);
   return (
     <TouchableOpacity style={S.companyCard} onPress={onPress} activeOpacity={0.75}>
@@ -351,12 +365,27 @@ const CompanyCard: React.FC<{
         {company.planName && (
           <Text style={S.companyPlan}>{company.planName}</Text>
         )}
+        {/* The server has always sent isTrial; nothing rendered it, so a trial
+            company looked the same as a paying one. */}
+        {company.isTrial && (
+          <Text style={S.companyTrial}>
+            {company.trialConvertedAt ? 'Converted from trial' : 'On free trial'}
+          </Text>
+        )}
       </View>
       <View style={S.companyRight}>
         <View style={[S.statusBadge, { backgroundColor: cfg.bg, borderColor: cfg.fg }]}>
           <Text style={[S.statusText, { color: cfg.fg }]}>{company.status}</Text>
         </View>
-        <Feather name="chevron-right" size={16} color={colors.textTertiary} style={{ marginTop: spacing.xxs }} />
+        <TouchableOpacity
+          onPress={onReview}
+          style={S.reviewBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Review ${company.name}`}
+        >
+          <Text style={S.reviewBtnText}>Review</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -367,13 +396,15 @@ const CompanyCard: React.FC<{
 // ═══════════════════════════════════════════════════════
 const CompanyManagementScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<CompaniesStackParamList>>();
   const route = useRoute<any>();
 
   const companies = useAppSelector(selectCompanies);
   const total = useAppSelector(selectCompaniesTotal);
   const status = useAppSelector(selectCompaniesStatus);
   const filter = useAppSelector(selectCompaniesFilter);
+  const trial = useAppSelector(selectCompaniesTrial);
   const error = useAppSelector(selectCompaniesError);
   const stats = useAppSelector(selectPlatformStats);
 
@@ -407,6 +438,14 @@ const CompanyManagementScreen: React.FC = () => {
     (val: string) => {
       dispatch(setCompaniesFilter(val));
       dispatch(loadCompanies({ page: 1, filter: val }));
+    },
+    [dispatch],
+  );
+
+  const onTrialChange = useCallback(
+    (val: boolean | undefined) => {
+      dispatch(setCompaniesTrial(val));
+      dispatch(loadCompanies({ page: 1, isTrial: val }));
     },
     [dispatch],
   );
@@ -541,6 +580,17 @@ const CompanyManagementScreen: React.FC = () => {
             />
           ))}
         </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.filtersContent}>
+          <Text style={S.filterGroupLabel}>Trial</Text>
+          {TRIAL_FILTERS.map(f => (
+            <FilterChip
+              key={String(f.value)}
+              label={f.label}
+              active={trial === f.value}
+              onPress={() => onTrialChange(f.value)}
+            />
+          ))}
+        </ScrollView>
       </View>
 
       {isLoading ? (
@@ -559,7 +609,19 @@ const CompanyManagementScreen: React.FC = () => {
           data={companies}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <CompanyCard company={item} onPress={() => openModal(item)} />
+            <CompanyCard
+              company={item}
+              // Opens the record. The quick-decision modal is still reachable
+              // from the row's own action, so a reviewer working a queue does
+              // not have to round-trip through the detail screen.
+              onPress={() =>
+                navigation.navigate('CompanyDetail', {
+                  id: item.id,
+                  name: item.name,
+                })
+              }
+              onReview={() => openModal(item)}
+            />
           )}
           contentContainerStyle={S.listContent}
           onEndReached={loadMore}
@@ -610,6 +672,7 @@ const S = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  filterGroupLabel: { ...typography.labelSm, color: colors.textTertiary, alignSelf: 'center' },
   filtersContent: { paddingHorizontal: spacing.md, paddingVertical: 10, gap: spacing.xs },
   listContent: { padding: spacing.md, gap: 10, paddingBottom: 30 },
   companyCard: {
@@ -629,6 +692,9 @@ const S = StyleSheet.create({
   companyInfo: { flex: 1 },
   companyName: { ...typography.h5, color: colors.textPrimary },
   companyMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  companyTrial: { ...typography.labelSm, color: colors.warning },
+  reviewBtn: { marginTop: spacing.xxs, paddingHorizontal: spacing.xs, paddingVertical: spacing.xxs },
+  reviewBtnText: { ...typography.labelSm, color: colors.primary },
   companyPlan: {
     ...typography.overline, color: colors.primary, 
     marginTop: 3, backgroundColor: colors.primaryLighter,

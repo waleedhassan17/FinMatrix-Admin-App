@@ -12,12 +12,16 @@ import {
   updateSubscriptionPlanAPI,
   deleteSubscriptionPlanAPI,
   updateCompanyStatusAPI,
+  getCompanyDetailAPI,
+  updateFeatureOverrideAPI,
   assignSubscriptionAPI,
   getAllSubscriptionsAPI,
 } from '../../networks/billing/superAdminNetwork';
 import type {
   PlatformStats,
   CompanyListItem,
+  CompanyDetail,
+  FeatureOverrideInput,
   SubscriptionPlan,
   CompanySubscription,
 } from '../../models/superAdminModel';
@@ -29,6 +33,8 @@ import {
   planResponseSerializer,
   subscriptionListResponseSerializer,
   subscriptionResponseSerializer,
+  companyDetailResponseSerializer,
+  featureOverrideResponseSerializer,
 } from '../../serializers/superAdminSerializer';
 
 // Entity shapes live in models/superAdminModel.ts; re-exported here so
@@ -36,6 +42,7 @@ import {
 export type {
   PlatformStats,
   CompanyListItem,
+  CompanyDetail,
   SubscriptionPlan,
   CompanySubscription,
 };
@@ -50,11 +57,17 @@ export interface SuperAdminState {
   companiesPage: number;
   companiesStatus: 'idle' | 'loading' | 'failed';
   companiesFilter: string;
+  /** undefined = no ?isTrial param at all, which the server reads as "any". */
+  companiesTrial: boolean | undefined;
   companiesError: string;
 
   plans: SubscriptionPlan[];
   plansStatus: 'idle' | 'loading' | 'failed';
   plansError: string;
+
+  detail: CompanyDetail | null;
+  detailStatus: 'idle' | 'loading' | 'failed';
+  detailError: string;
 
   subscriptions: CompanySubscription[];
   subsTotal: number;
@@ -92,11 +105,16 @@ const initialState: SuperAdminState = {
   companiesPage: 1,
   companiesStatus: 'idle',
   companiesFilter: 'all',
+  companiesTrial: undefined,
   companiesError: '',
 
   plans: [],
   plansStatus: 'idle',
   plansError: '',
+
+  detail: null,
+  detailStatus: 'idle',
+  detailError: '',
 
   subscriptions: [],
   subsTotal: 0,
@@ -113,6 +131,14 @@ export const superAdminSlice = createAppSlice({
     setCompaniesFilter: create.reducer(
       (state, action: PayloadAction<string>) => {
         state.companiesFilter = action.payload;
+        state.companiesPage = 1;
+        state.companies = [];
+      },
+    ),
+
+    setCompaniesTrial: create.reducer(
+      (state, action: PayloadAction<boolean | undefined>) => {
+        state.companiesTrial = action.payload;
         state.companiesPage = 1;
         state.companies = [];
       },
@@ -141,13 +167,20 @@ export const superAdminSlice = createAppSlice({
 
     loadCompanies: create.asyncThunk(
       async (
-        args: { page?: number; filter?: string } | undefined,
+        args: { page?: number; filter?: string; isTrial?: boolean } | undefined,
         { getState },
       ) => {
         const state = (getState() as { superAdmin: SuperAdminState }).superAdmin;
         const page = args?.page ?? state.companiesPage;
         const filter = args?.filter ?? state.companiesFilter;
-        const res = await getAllCompaniesAPI(page, 20, filter === 'all' ? undefined : filter);
+        const isTrial =
+          args && 'isTrial' in args ? args.isTrial : state.companiesTrial;
+        const res = await getAllCompaniesAPI(
+          page,
+          20,
+          filter === 'all' ? undefined : filter,
+          isTrial,
+        );
         return { ...companyListResponseSerializer(res), page };
       },
       {
@@ -205,6 +238,49 @@ export const superAdminSlice = createAppSlice({
           };
           bump(previous as keyof typeof buckets, -1);
           bump(next as keyof typeof buckets, 1);
+        },
+      },
+    ),
+
+    loadCompanyDetail: create.asyncThunk(
+      async (id: string) => {
+        const res = await getCompanyDetailAPI(id);
+        return companyDetailResponseSerializer(res);
+      },
+      {
+        pending: state => {
+          state.detailStatus = 'loading';
+          state.detailError = '';
+        },
+        fulfilled: (state, action) => {
+          state.detail = action.payload;
+          state.detailStatus = 'idle';
+        },
+        rejected: (state, action) => {
+          state.detailStatus = 'failed';
+          state.detailError =
+            (action.error as any)?.message ?? 'Failed to load this company';
+        },
+      },
+    ),
+
+    setCompanyFeatureOverride: create.asyncThunk(
+      async (args: { id: string; input: FeatureOverrideInput }) => {
+        const res = await updateFeatureOverrideAPI(args.id, args.input);
+        return featureOverrideResponseSerializer(res);
+      },
+      {
+        pending: beginAction,
+        rejected: failAction,
+        fulfilled: (state, action) => {
+          endAction(state);
+          // Merge rather than refetch: the payload carries exactly the three
+          // fields the server applied.
+          if (state.detail && state.detail.id === action.payload.id) {
+            state.detail.companyType = action.payload.companyType;
+            state.detail.inventoryEnabled = action.payload.inventoryEnabled;
+            state.detail.allFeaturesUnlocked = action.payload.allFeaturesUnlocked;
+          }
         },
       },
     ),
@@ -303,6 +379,7 @@ export const superAdminSlice = createAppSlice({
     selectCompaniesTotal: s => s.companiesTotal,
     selectCompaniesStatus: s => s.companiesStatus,
     selectCompaniesFilter: s => s.companiesFilter,
+    selectCompaniesTrial: s => s.companiesTrial,
     selectCompaniesError: s => s.companiesError,
     selectPlans: s => s.plans,
     selectPlansStatus: s => s.plansStatus,
@@ -311,6 +388,9 @@ export const superAdminSlice = createAppSlice({
     selectPlansError: s => s.plansError,
     selectSubscriptions: s => s.subscriptions,
     selectSubsStatus: s => s.subsStatus,
+    selectCompanyDetail: s => s.detail,
+    selectCompanyDetailStatus: s => s.detailStatus,
+    selectCompanyDetailError: s => s.detailError,
     selectActionStatus: s => s.actionStatus,
     selectActionError: s => s.actionError,
   },
@@ -318,9 +398,12 @@ export const superAdminSlice = createAppSlice({
 
 export const {
   setCompaniesFilter,
+  setCompaniesTrial,
   loadPlatformStats,
   loadCompanies,
   updateCompanyStatusLocal,
+  loadCompanyDetail,
+  setCompanyFeatureOverride,
   loadPlans,
   createPlan,
   updatePlan,
@@ -337,12 +420,16 @@ export const {
   selectCompaniesTotal,
   selectCompaniesStatus,
   selectCompaniesFilter,
+  selectCompaniesTrial,
   selectCompaniesError,
   selectPlans,
   selectPlansStatus,
   selectPlansError,
   selectSubscriptions,
   selectSubsStatus,
+  selectCompanyDetail,
+  selectCompanyDetailStatus,
+  selectCompanyDetailError,
   selectActionStatus,
   selectActionError,
 } = superAdminSlice.selectors;
