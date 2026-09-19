@@ -13,8 +13,14 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'SafeAreaView',
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+// Stubbed as host components. Every name the screen imports has to be here --
+// a missing one renders as undefined and React fails with "Element type is
+// invalid", pointing at the screen rather than at this mock.
 jest.mock('../../../../components/admin/AdminUI', () => ({
   AdminScreenHeader: 'AdminScreenHeader',
+  AdminErrorState: 'AdminErrorState',
+  AdminEmptyState: 'AdminEmptyState',
+  FilterChip: 'FilterChip',
 }));
 jest.mock('../../../../utils/alert', () => ({ Alert: { alert: jest.fn() } }));
 jest.mock('@react-navigation/native', () => ({

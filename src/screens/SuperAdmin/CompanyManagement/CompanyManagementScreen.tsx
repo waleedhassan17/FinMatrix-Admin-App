@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { Alert } from '../../../utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,12 +27,18 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
-import { AdminScreenHeader } from '../../../components/admin/AdminUI';
+import {
+  AdminScreenHeader,
+  AdminEmptyState,
+  AdminErrorState,
+  FilterChip,
+} from '../../../components/admin/AdminUI';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
 import {
   loadCompanies,
+  loadPlatformStats,
   updateCompanyStatusLocal,
   setCompaniesFilter,
   selectCompanies,
@@ -39,6 +46,7 @@ import {
   selectCompaniesStatus,
   selectCompaniesFilter,
   selectCompaniesError,
+  selectPlatformStats,
   type CompanyListItem,
 } from '../superAdminSlice';
 
@@ -58,26 +66,6 @@ const REJECT_REASONS = [
   'Suspicious activity',
 ];
 
-// ── Filter Chip ───────────────────────────────────────
-const FilterChip: React.FC<{
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  count?: number;
-}> = ({ label, active, onPress, count }) => (
-  <TouchableOpacity
-    style={[S.chip, active && S.chipActive]}
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <Text style={[S.chipText, active && S.chipTextActive]}>{label}</Text>
-    {count !== undefined && count > 0 && (
-      <View style={[S.chipBadge, active && S.chipBadgeActive]}>
-        <Text style={[S.chipBadgeText, active && S.chipBadgeTextActive]}>{count}</Text>
-      </View>
-    )}
-  </TouchableOpacity>
-);
 
 // ── Review Modal ──────────────────────────────────────
 const ReviewModal: React.FC<{
@@ -387,6 +375,18 @@ const CompanyManagementScreen: React.FC = () => {
   const status = useAppSelector(selectCompaniesStatus);
   const filter = useAppSelector(selectCompaniesFilter);
   const error = useAppSelector(selectCompaniesError);
+  const stats = useAppSelector(selectPlatformStats);
+
+  // The chips declared a count badge and rendered it, but nothing ever passed
+  // a number, so it could not appear. These are platform-wide totals from
+  // /super-admin/stats -- not a count of the page currently loaded.
+  const filterCounts: Record<string, number | undefined> = {
+    all: stats?.companies.total,
+    pending: stats?.companies.pending,
+    active: stats?.companies.active,
+    inactive: stats?.companies.suspended,
+    rejected: stats?.companies.rejected,
+  };
 
   const [selectedCompany, setSelectedCompany] = useState<CompanyListItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -397,6 +397,10 @@ const CompanyManagementScreen: React.FC = () => {
       dispatch(setCompaniesFilter(initialFilter));
     }
     dispatch(loadCompanies({ page: 1, filter: initialFilter ?? filter }));
+    // The chip badges read platform-wide counts, which this screen does not
+    // otherwise fetch. Cheap, and it keeps the badges honest when the screen
+    // is opened directly rather than through the dashboard.
+    dispatch(loadPlatformStats());
   }, []);
 
   const onFilterChange = useCallback(
@@ -489,8 +493,18 @@ const CompanyManagementScreen: React.FC = () => {
     }
   }, [dispatch, companies.length, total, status, filter]);
 
-  const onRefresh = useCallback(() => {
-    dispatch(loadCompanies({ page: 1, filter }));
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        dispatch(loadCompanies({ page: 1, filter })),
+        dispatch(loadPlatformStats()),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [dispatch, filter]);
 
   const isLoading = status === 'loading' && companies.length === 0;
@@ -523,6 +537,7 @@ const CompanyManagementScreen: React.FC = () => {
               label={f.label}
               active={filter === f.value}
               onPress={() => onFilterChange(f.value)}
+              count={filterCounts[f.value]}
             />
           ))}
         </ScrollView>
@@ -534,13 +549,11 @@ const CompanyManagementScreen: React.FC = () => {
           <Text style={S.loadingText}>Loading companies...</Text>
         </View>
       ) : error ? (
-        <View style={S.centered}>
-          <Feather name="alert-circle" size={32} color={THEME.colors.danger} />
-          <Text style={S.errorText}>{error}</Text>
-          <TouchableOpacity style={S.retryBtn} onPress={onRefresh}>
-            <Text style={S.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <AdminErrorState
+          title="Could not load companies"
+          message={error}
+          onRetry={onRefresh}
+        />
       ) : (
         <FlatList
           data={companies}
@@ -551,11 +564,21 @@ const CompanyManagementScreen: React.FC = () => {
           contentContainerStyle={S.listContent}
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
+          // Pull-to-refresh: the header icon was the only way to reload, which
+          // is not where anyone reaches for it on a list.
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
-            <View style={S.empty}>
-              <Feather name="briefcase" size={40} color={colors.textTertiary} />
-              <Text style={S.emptyText}>No companies found</Text>
-            </View>
+            <AdminEmptyState
+              icon="briefcase"
+              title="No companies found"
+              message="Nothing matches this filter yet."
+            />
           }
           ListFooterComponent={
             status === 'loading' && companies.length > 0 ? (
@@ -588,24 +611,6 @@ const S = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   filtersContent: { paddingHorizontal: spacing.md, paddingVertical: 10, gap: spacing.xs },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs,
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 20, backgroundColor: colors.neutral100,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.labelSm, color: colors.textSecondary },
-  chipTextActive: { color: colors.neutral0 },
-  chipBadge: {
-    minWidth: 18, height: 18, borderRadius: 9,
-    backgroundColor: colors.border,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xxs,
-  },
-  chipBadgeActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  chipBadgeText: { ...typography.overline, color: colors.textSecondary },
-  chipBadgeTextActive: { color: colors.neutral0 },
-
   listContent: { padding: spacing.md, gap: 10, paddingBottom: 30 },
   companyCard: {
     flexDirection: 'row', alignItems: 'center',
@@ -638,11 +643,6 @@ const S = StyleSheet.create({
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadingText: { ...typography.bodySm, color: colors.textSecondary },
-  errorText: { ...typography.bodySm, color: colors.danger, textAlign: 'center', paddingHorizontal: spacing.lg },
-  retryBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, backgroundColor: colors.primary, borderRadius: radius.sm },
-  retryText: { color: colors.neutral0, ...typography.labelMd },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyText: { ...typography.bodySm, color: colors.textSecondary },
 
   // Modal
   modalOverlay: {
