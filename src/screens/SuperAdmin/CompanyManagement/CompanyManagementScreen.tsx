@@ -84,10 +84,12 @@ const ReviewModal: React.FC<{
   visible: boolean;
   company: CompanyListItem | null;
   onClose: () => void;
-  onApprove: () => void;
-  onReject: (reason: string) => void;
-  onDeactivate: () => void;
-  onReactivate: () => void;
+  // These settle when the decision has actually been made, so the modal can
+  // stop its spinner even when the parent keeps it open after a failure.
+  onApprove: () => Promise<void>;
+  onReject: (reason: string) => Promise<void>;
+  onDeactivate: () => Promise<void>;
+  onReactivate: () => Promise<void>;
 }> = ({ visible, company, onClose, onApprove, onReject, onDeactivate, onReactivate }) => {
   const [tab, setTab] = useState<'info' | 'action'>('info');
   const [action, setAction] = useState<'approve' | 'reject' | 'deactivate' | 'reactivate' | null>(null);
@@ -126,10 +128,17 @@ const ReviewModal: React.FC<{
       return;
     }
     setSubmitting(true);
-    if (action === 'approve') onApprove();
-    else if (action === 'reject') onReject(reason.trim());
-    else if (action === 'deactivate') onDeactivate();
-    else if (action === 'reactivate') onReactivate();
+    try {
+      if (action === 'approve') await onApprove();
+      else if (action === 'reject') await onReject(reason.trim());
+      else if (action === 'deactivate') await onDeactivate();
+      else if (action === 'reactivate') await onReactivate();
+    } finally {
+      // On success the parent closes the modal and the `visible` effect resets
+      // this anyway. On failure the modal stays open, and without this it stayed
+      // open on a spinner that never stopped.
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -403,48 +412,74 @@ const CompanyManagementScreen: React.FC = () => {
     setModalVisible(true);
   }, []);
 
-  const handleApprove = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'active' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Approved', `${selectedCompany.name} has been approved.`);
-  }, [dispatch, selectedCompany]);
-
-  const handleReject = useCallback(
-    async (reason: string) => {
+  // One decision path for all four buttons. They differed only in a status
+  // string and two strings of copy, and each awaited the dispatch WITHOUT
+  // .unwrap() before announcing success -- a rejected thunk still resolves, so
+  // a 403 or a 500 told the reviewer "Approved" while nothing had changed on
+  // the server. .unwrap() is what makes the failure reachable; the modal stays
+  // open on failure so the reason the reviewer typed is not thrown away.
+  const decide = useCallback(
+    async (
+      status: string,
+      title: string,
+      body: string,
+      rejectionReason?: string,
+    ) => {
       if (!selectedCompany) return;
-      await dispatch(
-        updateCompanyStatusLocal({
-          id: selectedCompany.id,
-          status: 'rejected',
-          rejectionReason: reason,
-        }),
-      );
-      setModalVisible(false);
-      Alert.alert('Rejected', `${selectedCompany.name} has been rejected.`);
+      try {
+        await dispatch(
+          updateCompanyStatusLocal({
+            id: selectedCompany.id,
+            status,
+            rejectionReason,
+          }),
+        ).unwrap();
+        setModalVisible(false);
+        Alert.alert(title, body);
+      } catch (e) {
+        Alert.alert(
+          'Could not update the company',
+          e instanceof Error && e.message
+            ? e.message
+            : 'Please check your connection and try again.',
+        );
+      }
     },
     [dispatch, selectedCompany],
   );
 
-  const handleDeactivate = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'inactive' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Deactivated', `${selectedCompany.name} has been deactivated. Its users are now blocked.`);
-  }, [dispatch, selectedCompany]);
+  const handleApprove = useCallback(
+    () =>
+      decide('active', 'Approved', `${selectedCompany?.name} has been approved.`),
+    [decide, selectedCompany],
+  );
 
-  const handleReactivate = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'active' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Reactivated', `${selectedCompany.name} is active again.`);
-  }, [dispatch, selectedCompany]);
+  const handleReject = useCallback(
+    (reason: string) =>
+      decide(
+        'rejected',
+        'Rejected',
+        `${selectedCompany?.name} has been rejected.`,
+        reason,
+      ),
+    [decide, selectedCompany],
+  );
+
+  const handleDeactivate = useCallback(
+    () =>
+      decide(
+        'inactive',
+        'Deactivated',
+        `${selectedCompany?.name} has been deactivated. Its users are now blocked.`,
+      ),
+    [decide, selectedCompany],
+  );
+
+  const handleReactivate = useCallback(
+    () =>
+      decide('active', 'Reactivated', `${selectedCompany?.name} is active again.`),
+    [decide, selectedCompany],
+  );
 
   const loadMore = useCallback(() => {
     if (status === 'loading') return;

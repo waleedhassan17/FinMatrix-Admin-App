@@ -59,7 +59,28 @@ export interface SuperAdminState {
   subscriptions: CompanySubscription[];
   subsTotal: number;
   subsStatus: 'idle' | 'loading' | 'failed';
+
+  // One sub-state shared by every MUTATING thunk, rather than a status pair per
+  // thunk. Read thunks keep their own (statsStatus, companiesStatus, …) because
+  // screens render those as skeletons in different places; a mutation is always
+  // "the thing I just pressed", so one pair is enough and every action screen
+  // reads the same two selectors.
+  actionStatus: 'idle' | 'loading' | 'failed';
+  actionError: string;
 }
+
+// Shared handlers for the mutating thunks below.
+const beginAction = (s: SuperAdminState) => {
+  s.actionStatus = 'loading';
+  s.actionError = '';
+};
+const endAction = (s: SuperAdminState) => {
+  s.actionStatus = 'idle';
+};
+const failAction = (s: SuperAdminState, action: { error?: { message?: string } }) => {
+  s.actionStatus = 'failed';
+  s.actionError = action.error?.message ?? 'That did not work. Please try again.';
+};
 
 const initialState: SuperAdminState = {
   stats: null,
@@ -80,6 +101,9 @@ const initialState: SuperAdminState = {
   subscriptions: [],
   subsTotal: 0,
   subsStatus: 'idle',
+
+  actionStatus: 'idle',
+  actionError: '',
 };
 
 export const superAdminSlice = createAppSlice({
@@ -154,17 +178,33 @@ export const superAdminSlice = createAppSlice({
         return companyStatusResponseSerializer(res);
       },
       {
+        pending: beginAction,
+        rejected: failAction,
         fulfilled: (state, action) => {
+          endAction(state);
+
           const idx = state.companies.findIndex(c => c.id === action.payload.id);
-          if (idx !== -1) {
-            state.companies[idx].status = action.payload.status;
-            state.companies[idx].rejectionReason = action.payload.rejectionReason;
-          }
-          if (state.stats) {
-            // Recalculate stats optimistically
-            state.stats.companies.pending = state.companies.filter(c => c.status === 'pending').length;
-            state.stats.companies.active = state.companies.filter(c => c.status === 'active').length;
-          }
+          if (idx === -1) return;
+
+          const previous = state.companies[idx].status;
+          const next = action.payload.status;
+          state.companies[idx].status = next;
+          state.companies[idx].rejectionReason = action.payload.rejectionReason;
+
+          // Move the counts by a delta rather than recounting state.companies.
+          // That array is only the page currently loaded, so on a platform with
+          // 500 companies a recount reported the dashboard's pending total as
+          // however many happened to be on screen.
+          if (!state.stats || previous === next) return;
+          const buckets = state.stats.companies;
+          const bump = (key: keyof typeof buckets, by: number) => {
+            const value = buckets[key];
+            if (typeof value === 'number') {
+              buckets[key] = Math.max(0, value + by) as typeof value;
+            }
+          };
+          bump(previous as keyof typeof buckets, -1);
+          bump(next as keyof typeof buckets, 1);
         },
       },
     ),
@@ -266,8 +306,13 @@ export const superAdminSlice = createAppSlice({
     selectCompaniesError: s => s.companiesError,
     selectPlans: s => s.plans,
     selectPlansStatus: s => s.plansStatus,
+    // plansError was written on every failed load and had no selector, so the
+    // Plans screen could not render a failure even though it had one to show.
+    selectPlansError: s => s.plansError,
     selectSubscriptions: s => s.subscriptions,
     selectSubsStatus: s => s.subsStatus,
+    selectActionStatus: s => s.actionStatus,
+    selectActionError: s => s.actionError,
   },
 });
 
@@ -295,6 +340,9 @@ export const {
   selectCompaniesError,
   selectPlans,
   selectPlansStatus,
+  selectPlansError,
   selectSubscriptions,
   selectSubsStatus,
+  selectActionStatus,
+  selectActionError,
 } = superAdminSlice.selectors;

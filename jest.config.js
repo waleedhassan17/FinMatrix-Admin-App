@@ -5,7 +5,11 @@ module.exports = {
   // which ships `export {` in its legacy-esm build), so requiring it from a
   // test dies on "Unexpected token 'export'". Slice tests need it, so let Babel
   // transform those two alongside the RN packages.
+  //
+  // react-redux is listed separately from redux: the negative lookahead is
+  // anchored straight after `node_modules/`, so `redux` does not also cover
+  // `react-redux`. Screen tests that mount a <Provider> need it.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@reduxjs/toolkit|immer|redux|reselect)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|@reduxjs/toolkit|immer|redux|react-redux|reselect)/)',
   ],
 };
