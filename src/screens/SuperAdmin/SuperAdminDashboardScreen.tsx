@@ -70,9 +70,12 @@ const SidebarDrawer: React.FC<{
     ]).start();
   }, [visible]);
 
+  // One entry per tab in SuperAdminNavigator. Payments was missing -- the
+  // review queue, which is the console's main job, had no drawer entry at all.
   const menuItems = [
     { icon: 'grid', label: 'Dashboard', screen: 'Dashboard' },
     { icon: 'briefcase', label: 'Companies', screen: 'Companies' },
+    { icon: 'check-square', label: 'Payment Verification', screen: 'Payments' },
     { icon: 'bar-chart-2', label: 'Revenue Analytics', screen: 'Analytics' },
     { icon: 'credit-card', label: 'Subscription Plans', screen: 'Plans' },
     { icon: 'settings', label: 'Settings', screen: 'Settings' },

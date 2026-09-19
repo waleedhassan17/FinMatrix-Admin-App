@@ -501,11 +501,8 @@ const CompanyManagementScreen: React.FC = () => {
       <AdminScreenHeader
         title="Companies"
         subtitle={`${total} total registered`}
-        left={
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
-            <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-        }
+        // No back arrow: this is a bottom-tab root, so goBack() had nothing
+        // to pop and the button was a no-op that still looked pressable.
         right={
           <TouchableOpacity
             onPress={onRefresh}

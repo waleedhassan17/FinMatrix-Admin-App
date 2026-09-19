@@ -13,21 +13,18 @@
 // below is what keeps owners out of this app.
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Feather } from '@expo/vector-icons';
 import { ROUTES } from '../../../navigations-maps/Base';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { setUser } from '../authSlice';
 import {
   setEmail,
   setPassword,
-  setRememberMe,
   clearSignInError,
   submitSignInAsync,
   selectSignInEmail,
   selectSignInPassword,
-  selectSignInRememberMe,
   selectSignInStatus,
   selectSignInError
 } from './signInSlice';
@@ -57,7 +54,6 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
 
   const email = useAppSelector(selectSignInEmail);
   const password = useAppSelector(selectSignInPassword);
-  const rememberMe = useAppSelector(selectSignInRememberMe);
   const status = useAppSelector(selectSignInStatus);
   const signInError = useAppSelector(selectSignInError);
 
@@ -177,19 +173,11 @@ const SignInScreen: React.FC<Props> = ({ navigation }) => {
           returnKeyType="go"
         />
 
+        {/* "Remember me" used to sit here. It wrote a rememberMe flag that
+            nothing read: the session is persisted unconditionally either way,
+            so the checkbox changed nothing whichever way it was left. A
+            control that does not control anything is worse than no control. */}
         <View style={s.optRow}>
-          <Pressable
-            style={s.remRow}
-            onPress={() => dispatch(setRememberMe(!rememberMe))}
-            hitSlop={6}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: rememberMe }}>
-            <View style={[s.checkbox, rememberMe && s.checkboxOn]}>
-              {rememberMe ? <Feather name="check" size={12} color={colors.neutral0} /> : null}
-            </View>
-            <Text style={s.remLabel}>Remember me</Text>
-          </Pressable>
-
           <Text
             style={s.link}
             onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD)}
@@ -209,18 +197,6 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: -AUTH.space.xs,
   },
-  remRow: { flexDirection: 'row', alignItems: 'center', gap: AUTH.space.md },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: AUTH.lineStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: AUTH.brand, borderColor: AUTH.brand },
-  remLabel: { ...THEME.typography.bodySm, fontFamily: AUTH.font, color: AUTH.ink[700] },
   link: {
     ...THEME.typography.h5,
     fontFamily: AUTH.font,

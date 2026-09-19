@@ -8,7 +8,6 @@ export interface SignInSliceState {
   email: string;
   username: string;
   password: string;
-  rememberMe: boolean;
   error: string;
   status: 'idle' | 'loading' | 'failed';
 }
@@ -17,7 +16,6 @@ const initialState: SignInSliceState = {
   email: '',
   username: '',
   password: '',
-  rememberMe: false,
   error: '',
   status: 'idle',
 };
@@ -35,9 +33,6 @@ export const signInSlice = createAppSlice({
     setPassword: create.reducer((state, action: PayloadAction<string>) => {
       state.password = action.payload;
     }),
-    setRememberMe: create.reducer((state, action: PayloadAction<boolean>) => {
-      state.rememberMe = action.payload;
-    }),
     clearSignInError: create.reducer(state => {
       state.error = '';
     }),
@@ -45,7 +40,6 @@ export const signInSlice = createAppSlice({
       state.email = '';
       state.username = '';
       state.password = '';
-      state.rememberMe = false;
       state.error = '';
       state.status = 'idle';
     }),
@@ -119,7 +113,6 @@ export const signInSlice = createAppSlice({
     selectSignInEmail: state => state.email,
     selectSignInUsername: state => state.username,
     selectSignInPassword: state => state.password,
-    selectSignInRememberMe: state => state.rememberMe,
     selectSignInStatus: state => state.status,
     selectSignInError: state => state.error,
   },
@@ -129,7 +122,6 @@ export const {
   setEmail,
   setUsername,
   setPassword,
-  setRememberMe,
   clearSignInError,
   resetSignInForm,
   submitSignInAsync,
@@ -140,7 +132,6 @@ export const {
   selectSignInEmail,
   selectSignInUsername,
   selectSignInPassword,
-  selectSignInRememberMe,
   selectSignInStatus,
   selectSignInError,
 } = signInSlice.selectors;

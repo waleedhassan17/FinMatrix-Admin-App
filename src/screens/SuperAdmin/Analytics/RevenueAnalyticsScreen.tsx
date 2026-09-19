@@ -16,6 +16,7 @@ import {
   RefreshControl,
   StatusBar,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -245,12 +246,22 @@ const RevenueAnalyticsScreen: React.FC = () => {
   const statsStatus = useAppSelector(selectStatsStatus);
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
   const [revLoading, setRevLoading] = useState(true);
+  const [revError, setRevError] = useState('');
 
   const loadRevenue = useCallback(async () => {
     try {
       setRevenue(await getPlatformRevenueAPI());
-    } catch {
-      /* keep last */
+      setRevError('');
+    } catch (e) {
+      // This was `catch { /* keep last */ }`, which meant a failed fetch
+      // rendered Rs 0 across the whole screen under a green "Live" badge.
+      // Reporting zero revenue as though it had been measured is worse than
+      // reporting nothing.
+      setRevError(
+        e instanceof Error && e.message
+          ? e.message
+          : 'Could not load revenue. Pull down to try again.',
+      );
     } finally {
       setRevLoading(false);
     }
@@ -337,9 +348,28 @@ const RevenueAnalyticsScreen: React.FC = () => {
         title="Revenue Analytics"
         subtitle="Platform financial overview"
         right={
-          <View style={[S.headerBadge, { backgroundColor: colors.successLighter }]}>
-            <View style={S.liveIndicator} />
-            <Text style={S.headerBadgeText}>Live</Text>
+          // Was hardcoded green "Live" regardless of whether the last fetch
+          // worked. A badge that says Live over stale or absent numbers is
+          // the part that turns a failed request into a wrong answer.
+          <View
+            style={[
+              S.headerBadge,
+              {
+                backgroundColor: revError
+                  ? colors.dangerLighter
+                  : colors.successLighter,
+              },
+            ]}
+          >
+            <View
+              style={[
+                S.liveIndicator,
+                revError ? { backgroundColor: colors.danger } : null,
+              ]}
+            />
+            <Text style={S.headerBadgeText}>
+              {revError ? 'Offline' : 'Live'}
+            </Text>
           </View>
         }
       />
@@ -355,6 +385,21 @@ const RevenueAnalyticsScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
+          {/* Says so when the numbers below are stale or absent, instead of
+              letting Rs 0 read as a measurement. */}
+          {revError ? (
+            <View style={S.errorBanner}>
+              <Feather name="alert-triangle" size={16} color={colors.danger} />
+              <View style={S.errorBannerText}>
+                <Text style={S.errorBannerTitle}>Revenue is out of date</Text>
+                <Text style={S.errorBannerBody}>{revError}</Text>
+              </View>
+              <TouchableOpacity onPress={loadRevenue} accessibilityRole="button">
+                <Text style={S.errorBannerAction}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {/* Total Revenue Banner */}
           <LinearGradient
             colors={[colors.primary, colors.primaryDark]}
@@ -541,6 +586,20 @@ const S = StyleSheet.create({
   },
   liveIndicator: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
   headerBadgeText: { ...typography.labelSm, color: colors.success },
+
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerLighter,
+  },
+  errorBannerText: { flex: 1 },
+  errorBannerTitle: { ...typography.labelMd, color: colors.danger },
+  errorBannerBody: { ...typography.bodySm, color: colors.textSecondary },
+  errorBannerAction: { ...typography.labelMd, color: colors.primary },
 
   loaderWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loaderText: { ...typography.bodySm, color: colors.textSecondary },
