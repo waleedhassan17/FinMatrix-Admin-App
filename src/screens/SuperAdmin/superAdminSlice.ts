@@ -71,7 +71,9 @@ export interface SuperAdminState {
 
   subscriptions: CompanySubscription[];
   subsTotal: number;
+  subsPage: number;
   subsStatus: 'idle' | 'loading' | 'failed';
+  subsError: string;
 
   // One sub-state shared by every MUTATING thunk, rather than a status pair per
   // thunk. Read thunks keep their own (statsStatus, companiesStatus, …) because
@@ -118,7 +120,9 @@ const initialState: SuperAdminState = {
 
   subscriptions: [],
   subsTotal: 0,
+  subsPage: 1,
   subsStatus: 'idle',
+  subsError: '',
 
   actionStatus: 'idle',
   actionError: '',
@@ -344,18 +348,30 @@ export const superAdminSlice = createAppSlice({
     ),
 
     loadSubscriptions: create.asyncThunk(
-      async () => {
-        const res = await getAllSubscriptionsAPI(1, 50);
-        return subscriptionListResponseSerializer(res);
+      async (args: { page?: number } | undefined) => {
+        const page = args?.page ?? 1;
+        const res = await getAllSubscriptionsAPI(page, 20);
+        return { ...subscriptionListResponseSerializer(res), page };
       },
       {
-        pending: state => { state.subsStatus = 'loading'; },
+        pending: state => {
+          state.subsStatus = 'loading';
+          state.subsError = '';
+        },
         fulfilled: (state, action) => {
-          state.subscriptions = action.payload.data;
+          state.subscriptions =
+            action.payload.page === 1
+              ? action.payload.data
+              : [...state.subscriptions, ...action.payload.data];
           state.subsTotal = action.payload.total;
+          state.subsPage = action.payload.page;
           state.subsStatus = 'idle';
         },
-        rejected: state => { state.subsStatus = 'failed'; },
+        rejected: (state, action) => {
+          state.subsStatus = 'failed';
+          state.subsError =
+            (action.error as any)?.message ?? 'Failed to load subscriptions';
+        },
       },
     ),
 
@@ -365,8 +381,12 @@ export const superAdminSlice = createAppSlice({
         return subscriptionResponseSerializer(res);
       },
       {
+        pending: beginAction,
+        rejected: failAction,
         fulfilled: (state, action) => {
+          endAction(state);
           state.subscriptions.unshift(action.payload);
+          state.subsTotal += 1;
         },
       },
     ),
@@ -387,7 +407,9 @@ export const superAdminSlice = createAppSlice({
     // Plans screen could not render a failure even though it had one to show.
     selectPlansError: s => s.plansError,
     selectSubscriptions: s => s.subscriptions,
+    selectSubsTotal: s => s.subsTotal,
     selectSubsStatus: s => s.subsStatus,
+    selectSubsError: s => s.subsError,
     selectCompanyDetail: s => s.detail,
     selectCompanyDetailStatus: s => s.detailStatus,
     selectCompanyDetailError: s => s.detailError,
@@ -426,7 +448,9 @@ export const {
   selectPlansStatus,
   selectPlansError,
   selectSubscriptions,
+  selectSubsTotal,
   selectSubsStatus,
+  selectSubsError,
   selectCompanyDetail,
   selectCompanyDetailStatus,
   selectCompanyDetailError,

@@ -2,7 +2,7 @@
 // FinMatrix — Subscription Plans Screen (Super Admin)
 // ═══════════════════════════════════════════════════════
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
+import SubscriptionsPanel from './SubscriptionsPanel';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
@@ -170,6 +171,8 @@ const SubscriptionPlansScreen: React.FC = () => {
   const plans = useAppSelector(selectPlans);
   const plansStatus = useAppSelector(selectPlansStatus);
   const plansError = useAppSelector(selectPlansError);
+  // Two views of the same subject, rather than a seventh tab in the tab bar.
+  const [tab, setTab] = useState<'catalogue' | 'subscriptions'>('catalogue');
 
   useEffect(() => {
     dispatch(loadPlans());
@@ -223,7 +226,30 @@ const SubscriptionPlansScreen: React.FC = () => {
         // No back arrow: a bottom-tab root has nothing to pop.
       />
 
-      {isLoading ? (
+      <View style={S.tabsRow}>
+        {(
+          [
+            ['catalogue', 'Catalogue'],
+            ['subscriptions', 'Subscriptions'],
+          ] as const
+        ).map(([value, label]) => (
+          <TouchableOpacity
+            key={value}
+            onPress={() => setTab(value)}
+            style={[S.tab, tab === value && S.tabActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: tab === value }}
+          >
+            <Text style={[S.tabText, tab === value && S.tabTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {tab === 'subscriptions' ? (
+        <View style={S.panelWrap}>
+          <SubscriptionsPanel plans={plans} />
+        </View>
+      ) : isLoading ? (
         <View style={S.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={S.loadingText}>Loading plans...</Text>
@@ -278,6 +304,19 @@ const SubscriptionPlansScreen: React.FC = () => {
 };
 
 const S = StyleSheet.create({
+  tabsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tab: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.primary },
+  tabText: { ...typography.labelMd, color: colors.textSecondary },
+  tabTextActive: { color: colors.primary },
+  panelWrap: { flex: 1, padding: spacing.md },
+
   container: { flex: 1, backgroundColor: colors.background },
   backBtn: { padding: spacing.xxs },
 
