@@ -41,6 +41,78 @@ export interface CompanyListItem {
   planName: string | null;
   createdAt: string;
   reviewedAt: string | null;
+  // The server has always sent these three and neither console modelled them,
+  // so a company on a free trial looked identical to a paying one.
+  isTrial: boolean;
+  trialStartedAt: string | null;
+  trialConvertedAt: string | null;
+}
+
+export type CompanyType = 'small_business' | 'large_org' | 'warehouse';
+
+/** A member row on the company detail payload. */
+export interface CompanyMember {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: string;
+  joinedAt: string | null;
+}
+
+/**
+ * GET /super-admin/companies/:id — the company ENTITY plus a status and two
+ * joined collections. It carries no memberCount and no planName; those exist
+ * only on the list row.
+ */
+export interface CompanyDetail {
+  id: string;
+  name: string;
+  industry: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  inviteCode: string | null;
+  companyType: CompanyType | null;
+  inventoryEnabled: boolean | null;
+  allFeaturesUnlocked: boolean | null;
+  subscriptionPlan: string | null;
+  subscriptionStatus: string | null;
+  subscriptionExpiryDate: string | null;
+  isTrial: boolean;
+  trialStartedAt: string | null;
+  trialConvertedAt: string | null;
+  members: CompanyMember[];
+  subscriptions: CompanySubscription[];
+}
+
+/**
+ * PATCH /super-admin/companies/:id/feature-override. Every field is optional —
+ * the server applies only what it is sent. allFeaturesUnlocked is a kill
+ * switch: it bypasses the feature guard before any plan logic runs.
+ */
+export interface FeatureOverrideInput {
+  allFeaturesUnlocked?: boolean;
+  companyType?: CompanyType;
+  inventoryEnabled?: boolean;
+}
+
+export interface FeatureOverrideResult {
+  id: string;
+  name: string;
+  companyType: CompanyType | null;
+  inventoryEnabled: boolean | null;
+  allFeaturesUnlocked: boolean | null;
+}
+
+/** POST /admin/payment-submissions/run-expiry-scan. */
+export interface ExpiryScanResult {
+  remindersSent: number;
+  expiringMarked: number;
+  deactivated: number;
+  scanned: number;
 }
 
 export interface SubscriptionPlan {

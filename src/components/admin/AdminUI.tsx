@@ -244,3 +244,122 @@ const s = StyleSheet.create({
   rowTrailing: { alignItems: 'flex-end', gap: spacing.xxs },
   rowValue: { ...typography.labelLg, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
 });
+
+// ── Filter Chip ───────────────────────────────────────
+/**
+ * A pill-shaped filter toggle. Three near-copies existed before -- one in
+ * CompanyManagement and two inlined in PaymentSubmissions -- and the trial
+ * filter would have made a fourth.
+ *
+ * `count` renders a badge. CompanyManagement declared that prop and rendered
+ * the badge but never passed a count, so the badges could not appear; the
+ * counts are on PlatformStats and the caller now passes them.
+ */
+export const FilterChip: React.FC<{
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  count?: number;
+}> = ({ label, active, onPress, count }) => (
+  <TouchableOpacity
+    style={[AU.chip, active && AU.chipActive]}
+    onPress={onPress}
+    activeOpacity={0.7}
+    accessibilityRole="button"
+    accessibilityState={{ selected: active }}
+  >
+    <Text style={[AU.chipText, active && AU.chipTextActive]}>{label}</Text>
+    {count !== undefined && count > 0 ? (
+      <View style={[AU.chipBadge, active && AU.chipBadgeActive]}>
+        <Text style={[AU.chipBadgeText, active && AU.chipBadgeTextActive]}>
+          {count > 99 ? '99+' : count}
+        </Text>
+      </View>
+    ) : null}
+  </TouchableOpacity>
+);
+
+// ── Error / empty states ──────────────────────────────
+/**
+ * A failed load, with a way to try again.
+ *
+ * Every screen that had one of these wrote it inline, and two screens had no
+ * error state at all -- a failure there rendered the empty state, which is
+ * indistinguishable from "nothing to review".
+ */
+export const AdminErrorState: React.FC<{
+  title?: string;
+  message: string;
+  onRetry?: () => void;
+}> = ({ title = 'Something went wrong', message, onRetry }) => (
+  <View style={AU.stateWrap}>
+    <Feather name="alert-circle" size={28} color={THEME.colors.danger} />
+    <Text style={AU.stateTitle}>{title}</Text>
+    <Text style={AU.stateBody}>{message}</Text>
+    {onRetry ? (
+      <TouchableOpacity onPress={onRetry} style={AU.stateBtn} accessibilityRole="button">
+        <Text style={AU.stateBtnText}>Try again</Text>
+      </TouchableOpacity>
+    ) : null}
+  </View>
+);
+
+/** Genuinely nothing to show -- distinct from a failure, on purpose. */
+export const AdminEmptyState: React.FC<{
+  icon?: string;
+  title: string;
+  message?: string;
+}> = ({ icon = 'inbox', title, message }) => (
+  <View style={AU.stateWrap}>
+    <Feather name={icon as any} size={28} color={THEME.colors.textSecondary} />
+    <Text style={AU.stateTitle}>{title}</Text>
+    {message ? <Text style={AU.stateBody}>{message}</Text> : null}
+  </View>
+);
+
+const AU = StyleSheet.create({
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.xxs,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.xs,
+    borderRadius: THEME.radius.full,
+    backgroundColor: THEME.colors.neutral100,
+  },
+  chipActive: { backgroundColor: THEME.colors.primary },
+  chipText: { ...THEME.typography.labelMd, color: THEME.colors.textSecondary },
+  chipTextActive: { color: THEME.colors.neutral0 },
+  chipBadge: {
+    minWidth: 18,
+    paddingHorizontal: THEME.spacing.xxs,
+    borderRadius: THEME.radius.full,
+    backgroundColor: THEME.colors.neutral200,
+    alignItems: 'center',
+  },
+  chipBadgeActive: { backgroundColor: THEME.colors.neutral0 },
+  chipBadgeText: { ...THEME.typography.labelSm, color: THEME.colors.textSecondary },
+  chipBadgeTextActive: { color: THEME.colors.primary },
+
+  stateWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xxl,
+    paddingHorizontal: THEME.spacing.xl,
+  },
+  stateTitle: { ...THEME.typography.h4, color: THEME.colors.textPrimary },
+  stateBody: {
+    ...THEME.typography.bodySm,
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+  },
+  stateBtn: {
+    marginTop: THEME.spacing.xxs,
+    paddingHorizontal: THEME.spacing.lg,
+    paddingVertical: THEME.spacing.sm,
+    borderRadius: THEME.radius.md,
+    backgroundColor: THEME.colors.primary,
+  },
+  stateBtnText: { ...THEME.typography.labelMd, color: THEME.colors.neutral0 },
+});

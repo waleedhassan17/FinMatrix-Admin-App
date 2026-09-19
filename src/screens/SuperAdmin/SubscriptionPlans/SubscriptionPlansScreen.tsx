@@ -2,7 +2,7 @@
 // FinMatrix — Subscription Plans Screen (Super Admin)
 // ═══════════════════════════════════════════════════════
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
+import SubscriptionsPanel from './SubscriptionsPanel';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
@@ -31,6 +32,7 @@ import {
   loadPlans,
   selectPlans,
   selectPlansStatus,
+  selectPlansError,
 } from '../superAdminSlice';
 
 const PLAN_GRADIENTS: readonly [string, string][] = [
@@ -79,7 +81,6 @@ interface DisplayPlan {
   maxInvoices: number | null;
   /** Active delivery riders allowed. The only thing separating warehouse plans. */
   deliveryPersonnelLimit?: number;
-  disabled: boolean;
 }
 
 /** "12 months" reads as a count; "1 year" reads as a plan. */
@@ -96,52 +97,18 @@ const TIER_LABELS: Record<string, string> = {
   warehouse: 'Warehouse',
 };
 
-const CANONICAL_PLANS: DisplayPlan[] = [
-  {
-    name: 'Free',
-    description: 'Everything you need to start running your books.',
-    isFree: true,
-    priceLabel: 'Free',
-    features: ['Full accounting', 'Invoices & bills', 'Reports'],
-    maxInvoices: null,
-    disabled: false,
-  },
-  {
-    name: 'Standard',
-    description: 'For growing teams — more seats and volume.',
-    isFree: false,
-    priceLabel: 'Rs 1,000',
-    durationLabel: '/ 6 months',
-    // Named explicitly rather than "Everything in <plan>", which points at a
-    // plan the reader may not be looking at.
-    features: ['Full accounting, invoices & bills', 'Priority support', 'Higher limits'],
-    maxInvoices: null,
-    disabled: true,
-  },
-  {
-    name: 'Pro',
-    description: 'For established businesses that need it all.',
-    isFree: false,
-    priceLabel: 'Rs 2,000',
-    durationLabel: '/ 3 months',
-    features: ['Full accounting, invoices & bills', 'Advanced analytics', 'Dedicated support'],
-    maxInvoices: null,
-    disabled: true,
-  },
-];
-
 // ── Plan Card (display-only; same UI used in signup) ──
 const PlanCard: React.FC<{ plan: DisplayPlan; gradientIdx: number }> = ({ plan, gradientIdx }) => {
   const gradient = PLAN_GRADIENTS[gradientIdx % PLAN_GRADIENTS.length];
 
   return (
-    <View style={[S.planCard, plan.disabled && S.planCardInactive]}>
+    <View style={S.planCard}>
       <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.planGrad}>
         <View style={S.planDecor} />
         <View style={S.planHeaderRow}>
           <Text style={S.planName}>{plan.name}</Text>
-          <View style={[S.statusBadge, plan.disabled && S.statusBadgeMuted]}>
-            <Text style={S.statusBadgeText}>{plan.disabled ? 'Coming soon' : 'Active'}</Text>
+          <View style={S.statusBadge}>
+            <Text style={S.statusBadgeText}>Active</Text>
           </View>
         </View>
         {plan.description ? (
@@ -182,13 +149,11 @@ const PlanCard: React.FC<{ plan: DisplayPlan; gradientIdx: number }> = ({ plan, 
         {/* The old third branch printed "<n> companies on this plan" from a
             companyCount nothing ever computed, so it could only ever render a
             false "0 companies". Dropped rather than left lying. */}
-        {plan.totalLabel || plan.disabled ? (
+        {plan.totalLabel ? (
           <View style={S.planCountRow}>
             <Feather name="briefcase" size={13} color={colors.textTertiary} />
             <Text style={S.planCountText}>
-              {plan.totalLabel
-                ? `${plan.totalLabel} billed once for the full period`
-                : 'Not yet available'}
+              {`${plan.totalLabel} billed once for the full period`}
             </Text>
           </View>
         ) : null}
@@ -205,6 +170,9 @@ const SubscriptionPlansScreen: React.FC = () => {
   const navigation = useNavigation();
   const plans = useAppSelector(selectPlans);
   const plansStatus = useAppSelector(selectPlansStatus);
+  const plansError = useAppSelector(selectPlansError);
+  // Two views of the same subject, rather than a seventh tab in the tab bar.
+  const [tab, setTab] = useState<'catalogue' | 'subscriptions'>('catalogue');
 
   useEffect(() => {
     dispatch(loadPlans());
@@ -223,9 +191,6 @@ const SubscriptionPlansScreen: React.FC = () => {
         p.companyType &&
         (!WAREHOUSE_ONLY_BUILD || p.companyType === DEFAULT_COMPANY_TYPE),
     );
-    if (tierPlans.length === 0) {
-      return CANONICAL_PLANS;
-    }
     return tierPlans.map(p => ({
       name: p.name,
       description:
@@ -239,11 +204,15 @@ const SubscriptionPlansScreen: React.FC = () => {
       features: resolvePlanFeatures(p.features),
       deliveryPersonnelLimit: p.deliveryPersonnelLimit,
       maxInvoices: p.maxInvoices,
-      disabled: false,
     }));
   }, [plans]);
 
   const isLoading = plansStatus === 'loading' && displayPlans.length === 0;
+  // A failed fetch used to fall through to a hardcoded CANONICAL_PLANS array
+  // with literal "Rs 1,000" / "Rs 2,000" prices -- so the operator read
+  // invented pricing and was never told the call had failed. plansError was
+  // written to the store all along and had no selector to read it back.
+  const hasFailed = plansStatus === 'failed' && displayPlans.length === 0;
 
   return (
     <SafeAreaView style={S.container} edges={['top']}>
@@ -254,17 +223,59 @@ const SubscriptionPlansScreen: React.FC = () => {
             ? 'Six warehouse plans · 3 / 5 / 10 delivery personnel · PKR · defined in server config'
             : 'Six plans · two per business type · PKR · defined in server config'
         }
-        left={
-          <TouchableOpacity onPress={() => (navigation as any).goBack()} style={S.backBtn}>
-            <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-        }
+        // No back arrow: a bottom-tab root has nothing to pop.
       />
 
-      {isLoading ? (
+      <View style={S.tabsRow}>
+        {(
+          [
+            ['catalogue', 'Catalogue'],
+            ['subscriptions', 'Subscriptions'],
+          ] as const
+        ).map(([value, label]) => (
+          <TouchableOpacity
+            key={value}
+            onPress={() => setTab(value)}
+            style={[S.tab, tab === value && S.tabActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: tab === value }}
+          >
+            <Text style={[S.tabText, tab === value && S.tabTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {tab === 'subscriptions' ? (
+        <View style={S.panelWrap}>
+          <SubscriptionsPanel plans={plans} />
+        </View>
+      ) : isLoading ? (
         <View style={S.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={S.loadingText}>Loading plans...</Text>
+        </View>
+      ) : hasFailed ? (
+        <View style={S.centered}>
+          <Feather name="alert-circle" size={28} color={colors.danger} />
+          <Text style={S.errorTitle}>Could not load plans</Text>
+          <Text style={S.errorBody}>
+            {plansError || 'The plan catalogue is defined on the server and could not be read.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => dispatch(loadPlans())}
+            style={S.retryBtn}
+            accessibilityRole="button"
+          >
+            <Text style={S.retryBtnText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : displayPlans.length === 0 ? (
+        <View style={S.centered}>
+          <Feather name="inbox" size={28} color={colors.textSecondary} />
+          <Text style={S.errorTitle}>No plans configured</Text>
+          <Text style={S.errorBody}>
+            The server returned no plans for this build.
+          </Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={S.listContent} showsVerticalScrollIndicator={false}>
@@ -293,11 +304,39 @@ const SubscriptionPlansScreen: React.FC = () => {
 };
 
 const S = StyleSheet.create({
+  tabsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tab: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.primary },
+  tabText: { ...typography.labelMd, color: colors.textSecondary },
+  tabTextActive: { color: colors.primary },
+  panelWrap: { flex: 1, padding: spacing.md },
+
   container: { flex: 1, backgroundColor: colors.background },
   backBtn: { padding: spacing.xxs },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadingText: { ...typography.bodySm, color: colors.textSecondary },
+  errorTitle: { ...typography.h4, color: colors.textPrimary },
+  errorBody: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  retryBtn: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  retryBtnText: { ...typography.labelMd, color: colors.surface },
 
   listContent: { padding: spacing.md, gap: spacing.md, paddingBottom: 30 },
   tierHeading: {
@@ -310,7 +349,6 @@ const S = StyleSheet.create({
     shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
   },
-  planCardInactive: { opacity: 0.7 },
   planGrad: { padding: 18, position: 'relative', overflow: 'hidden' },
   planDecor: {
     position: 'absolute', right: -20, top: -20,
@@ -323,7 +361,6 @@ const S = StyleSheet.create({
     paddingHorizontal: spacing.xs, paddingVertical: 3, borderRadius: radius.md,
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
-  statusBadgeMuted: { backgroundColor: 'rgba(255,255,255,0.18)' },
   statusBadgeText: { ...typography.overline, color: colors.neutral0 },
   planDesc: { ...typography.caption, color: 'rgba(255,255,255,0.85)', marginTop: spacing.xxs },
   planPriceRow: {

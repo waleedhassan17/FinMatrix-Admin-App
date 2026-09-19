@@ -33,6 +33,23 @@ export interface ValidationErrors {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// ─── Password Rules ──────────────────────────────────
+// The server keeps length and character-class as two separate checks
+// (MinLength(8) plus a class regex), so these mirror that split rather than
+// folding both into one pattern. A single combined regex is what went wrong
+// before: ForgotPasswordScreen carried `.{8}$`, which anchors the length to
+// EXACTLY eight, so every longer password was refused under a message that
+// promised "8+". Keeping the rule next to getPasswordStrength below is the
+// point -- the two disagreed for as long as they lived in different files.
+export const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_CLASSES = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+
+export const isValidPassword = (password: string): boolean =>
+  password.length >= PASSWORD_MIN_LENGTH && PASSWORD_CLASSES.test(password);
+
+export const PASSWORD_RULE_MESSAGE =
+  'Password must be 8+ characters with an uppercase letter, a lowercase letter and a number';
+
 // ─── Password Strength ───────────────────────────────
 export type PasswordStrength = 'weak' | 'fair' | 'strong' | 'excellent';
 

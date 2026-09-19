@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { Alert } from '../../../utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,22 +24,32 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { CompaniesStackParamList } from '../../../navigators/CompaniesStackNavigator';
 
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
-import { AdminScreenHeader } from '../../../components/admin/AdminUI';
+import {
+  AdminScreenHeader,
+  AdminEmptyState,
+  AdminErrorState,
+  FilterChip,
+} from '../../../components/admin/AdminUI';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
 import {
   loadCompanies,
+  loadPlatformStats,
   updateCompanyStatusLocal,
   setCompaniesFilter,
+  setCompaniesTrial,
   selectCompanies,
   selectCompaniesTotal,
   selectCompaniesStatus,
   selectCompaniesFilter,
+  selectCompaniesTrial,
   selectCompaniesError,
+  selectPlatformStats,
   type CompanyListItem,
 } from '../superAdminSlice';
 
@@ -50,6 +61,14 @@ const FILTERS = [
   { label: 'Rejected', value: 'rejected' },
 ];
 
+// The server takes ?isTrial=true|false and ignores anything else; `all` means
+// send no param, matching how the status filter treats 'all'.
+const TRIAL_FILTERS: { label: string; value: boolean | undefined }[] = [
+  { label: 'All', value: undefined },
+  { label: 'On trial', value: true },
+  { label: 'Never on trial', value: false },
+];
+
 const REJECT_REASONS = [
   'Incomplete documentation',
   'Invalid business information',
@@ -58,36 +77,18 @@ const REJECT_REASONS = [
   'Suspicious activity',
 ];
 
-// ── Filter Chip ───────────────────────────────────────
-const FilterChip: React.FC<{
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  count?: number;
-}> = ({ label, active, onPress, count }) => (
-  <TouchableOpacity
-    style={[S.chip, active && S.chipActive]}
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <Text style={[S.chipText, active && S.chipTextActive]}>{label}</Text>
-    {count !== undefined && count > 0 && (
-      <View style={[S.chipBadge, active && S.chipBadgeActive]}>
-        <Text style={[S.chipBadgeText, active && S.chipBadgeTextActive]}>{count}</Text>
-      </View>
-    )}
-  </TouchableOpacity>
-);
 
 // ── Review Modal ──────────────────────────────────────
 const ReviewModal: React.FC<{
   visible: boolean;
   company: CompanyListItem | null;
   onClose: () => void;
-  onApprove: () => void;
-  onReject: (reason: string) => void;
-  onDeactivate: () => void;
-  onReactivate: () => void;
+  // These settle when the decision has actually been made, so the modal can
+  // stop its spinner even when the parent keeps it open after a failure.
+  onApprove: () => Promise<void>;
+  onReject: (reason: string) => Promise<void>;
+  onDeactivate: () => Promise<void>;
+  onReactivate: () => Promise<void>;
 }> = ({ visible, company, onClose, onApprove, onReject, onDeactivate, onReactivate }) => {
   const [tab, setTab] = useState<'info' | 'action'>('info');
   const [action, setAction] = useState<'approve' | 'reject' | 'deactivate' | 'reactivate' | null>(null);
@@ -126,10 +127,17 @@ const ReviewModal: React.FC<{
       return;
     }
     setSubmitting(true);
-    if (action === 'approve') onApprove();
-    else if (action === 'reject') onReject(reason.trim());
-    else if (action === 'deactivate') onDeactivate();
-    else if (action === 'reactivate') onReactivate();
+    try {
+      if (action === 'approve') await onApprove();
+      else if (action === 'reject') await onReject(reason.trim());
+      else if (action === 'deactivate') await onDeactivate();
+      else if (action === 'reactivate') await onReactivate();
+    } finally {
+      // On success the parent closes the modal and the `visible` effect resets
+      // this anyway. On failure the modal stays open, and without this it stayed
+      // open on a spinner that never stopped.
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -338,8 +346,11 @@ const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({
 // ── Company Card ──────────────────────────────────────
 const CompanyCard: React.FC<{
   company: CompanyListItem;
+  /** Opens the full record. */
   onPress: () => void;
-}> = ({ company, onPress }) => {
+  /** Opens the quick-decision modal, without leaving the queue. */
+  onReview: () => void;
+}> = ({ company, onPress, onReview }) => {
   const cfg = statusStyle(company.status);
   return (
     <TouchableOpacity style={S.companyCard} onPress={onPress} activeOpacity={0.75}>
@@ -354,12 +365,27 @@ const CompanyCard: React.FC<{
         {company.planName && (
           <Text style={S.companyPlan}>{company.planName}</Text>
         )}
+        {/* The server has always sent isTrial; nothing rendered it, so a trial
+            company looked the same as a paying one. */}
+        {company.isTrial && (
+          <Text style={S.companyTrial}>
+            {company.trialConvertedAt ? 'Converted from trial' : 'On free trial'}
+          </Text>
+        )}
       </View>
       <View style={S.companyRight}>
         <View style={[S.statusBadge, { backgroundColor: cfg.bg, borderColor: cfg.fg }]}>
           <Text style={[S.statusText, { color: cfg.fg }]}>{company.status}</Text>
         </View>
-        <Feather name="chevron-right" size={16} color={colors.textTertiary} style={{ marginTop: spacing.xxs }} />
+        <TouchableOpacity
+          onPress={onReview}
+          style={S.reviewBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Review ${company.name}`}
+        >
+          <Text style={S.reviewBtnText}>Review</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -370,14 +396,28 @@ const CompanyCard: React.FC<{
 // ═══════════════════════════════════════════════════════
 const CompanyManagementScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<CompaniesStackParamList>>();
   const route = useRoute<any>();
 
   const companies = useAppSelector(selectCompanies);
   const total = useAppSelector(selectCompaniesTotal);
   const status = useAppSelector(selectCompaniesStatus);
   const filter = useAppSelector(selectCompaniesFilter);
+  const trial = useAppSelector(selectCompaniesTrial);
   const error = useAppSelector(selectCompaniesError);
+  const stats = useAppSelector(selectPlatformStats);
+
+  // The chips declared a count badge and rendered it, but nothing ever passed
+  // a number, so it could not appear. These are platform-wide totals from
+  // /super-admin/stats -- not a count of the page currently loaded.
+  const filterCounts: Record<string, number | undefined> = {
+    all: stats?.companies.total,
+    pending: stats?.companies.pending,
+    active: stats?.companies.active,
+    inactive: stats?.companies.suspended,
+    rejected: stats?.companies.rejected,
+  };
 
   const [selectedCompany, setSelectedCompany] = useState<CompanyListItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -388,6 +428,10 @@ const CompanyManagementScreen: React.FC = () => {
       dispatch(setCompaniesFilter(initialFilter));
     }
     dispatch(loadCompanies({ page: 1, filter: initialFilter ?? filter }));
+    // The chip badges read platform-wide counts, which this screen does not
+    // otherwise fetch. Cheap, and it keeps the badges honest when the screen
+    // is opened directly rather than through the dashboard.
+    dispatch(loadPlatformStats());
   }, []);
 
   const onFilterChange = useCallback(
@@ -398,53 +442,87 @@ const CompanyManagementScreen: React.FC = () => {
     [dispatch],
   );
 
+  const onTrialChange = useCallback(
+    (val: boolean | undefined) => {
+      dispatch(setCompaniesTrial(val));
+      dispatch(loadCompanies({ page: 1, isTrial: val }));
+    },
+    [dispatch],
+  );
+
   const openModal = useCallback((company: CompanyListItem) => {
     setSelectedCompany(company);
     setModalVisible(true);
   }, []);
 
-  const handleApprove = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'active' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Approved', `${selectedCompany.name} has been approved.`);
-  }, [dispatch, selectedCompany]);
-
-  const handleReject = useCallback(
-    async (reason: string) => {
+  // One decision path for all four buttons. They differed only in a status
+  // string and two strings of copy, and each awaited the dispatch WITHOUT
+  // .unwrap() before announcing success -- a rejected thunk still resolves, so
+  // a 403 or a 500 told the reviewer "Approved" while nothing had changed on
+  // the server. .unwrap() is what makes the failure reachable; the modal stays
+  // open on failure so the reason the reviewer typed is not thrown away.
+  const decide = useCallback(
+    async (
+      status: string,
+      title: string,
+      body: string,
+      rejectionReason?: string,
+    ) => {
       if (!selectedCompany) return;
-      await dispatch(
-        updateCompanyStatusLocal({
-          id: selectedCompany.id,
-          status: 'rejected',
-          rejectionReason: reason,
-        }),
-      );
-      setModalVisible(false);
-      Alert.alert('Rejected', `${selectedCompany.name} has been rejected.`);
+      try {
+        await dispatch(
+          updateCompanyStatusLocal({
+            id: selectedCompany.id,
+            status,
+            rejectionReason,
+          }),
+        ).unwrap();
+        setModalVisible(false);
+        Alert.alert(title, body);
+      } catch (e) {
+        Alert.alert(
+          'Could not update the company',
+          e instanceof Error && e.message
+            ? e.message
+            : 'Please check your connection and try again.',
+        );
+      }
     },
     [dispatch, selectedCompany],
   );
 
-  const handleDeactivate = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'inactive' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Deactivated', `${selectedCompany.name} has been deactivated. Its users are now blocked.`);
-  }, [dispatch, selectedCompany]);
+  const handleApprove = useCallback(
+    () =>
+      decide('active', 'Approved', `${selectedCompany?.name} has been approved.`),
+    [decide, selectedCompany],
+  );
 
-  const handleReactivate = useCallback(async () => {
-    if (!selectedCompany) return;
-    await dispatch(
-      updateCompanyStatusLocal({ id: selectedCompany.id, status: 'active' }),
-    );
-    setModalVisible(false);
-    Alert.alert('Reactivated', `${selectedCompany.name} is active again.`);
-  }, [dispatch, selectedCompany]);
+  const handleReject = useCallback(
+    (reason: string) =>
+      decide(
+        'rejected',
+        'Rejected',
+        `${selectedCompany?.name} has been rejected.`,
+        reason,
+      ),
+    [decide, selectedCompany],
+  );
+
+  const handleDeactivate = useCallback(
+    () =>
+      decide(
+        'inactive',
+        'Deactivated',
+        `${selectedCompany?.name} has been deactivated. Its users are now blocked.`,
+      ),
+    [decide, selectedCompany],
+  );
+
+  const handleReactivate = useCallback(
+    () =>
+      decide('active', 'Reactivated', `${selectedCompany?.name} is active again.`),
+    [decide, selectedCompany],
+  );
 
   const loadMore = useCallback(() => {
     if (status === 'loading') return;
@@ -454,8 +532,18 @@ const CompanyManagementScreen: React.FC = () => {
     }
   }, [dispatch, companies.length, total, status, filter]);
 
-  const onRefresh = useCallback(() => {
-    dispatch(loadCompanies({ page: 1, filter }));
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        dispatch(loadCompanies({ page: 1, filter })),
+        dispatch(loadPlatformStats()),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [dispatch, filter]);
 
   const isLoading = status === 'loading' && companies.length === 0;
@@ -466,11 +554,8 @@ const CompanyManagementScreen: React.FC = () => {
       <AdminScreenHeader
         title="Companies"
         subtitle={`${total} total registered`}
-        left={
-          <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
-            <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-        }
+        // No back arrow: this is a bottom-tab root, so goBack() had nothing
+        // to pop and the button was a no-op that still looked pressable.
         right={
           <TouchableOpacity
             onPress={onRefresh}
@@ -491,6 +576,18 @@ const CompanyManagementScreen: React.FC = () => {
               label={f.label}
               active={filter === f.value}
               onPress={() => onFilterChange(f.value)}
+              count={filterCounts[f.value]}
+            />
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.filtersContent}>
+          <Text style={S.filterGroupLabel}>Trial</Text>
+          {TRIAL_FILTERS.map(f => (
+            <FilterChip
+              key={String(f.value)}
+              label={f.label}
+              active={trial === f.value}
+              onPress={() => onTrialChange(f.value)}
             />
           ))}
         </ScrollView>
@@ -502,28 +599,48 @@ const CompanyManagementScreen: React.FC = () => {
           <Text style={S.loadingText}>Loading companies...</Text>
         </View>
       ) : error ? (
-        <View style={S.centered}>
-          <Feather name="alert-circle" size={32} color={THEME.colors.danger} />
-          <Text style={S.errorText}>{error}</Text>
-          <TouchableOpacity style={S.retryBtn} onPress={onRefresh}>
-            <Text style={S.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <AdminErrorState
+          title="Could not load companies"
+          message={error}
+          onRetry={onRefresh}
+        />
       ) : (
         <FlatList
           data={companies}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <CompanyCard company={item} onPress={() => openModal(item)} />
+            <CompanyCard
+              company={item}
+              // Opens the record. The quick-decision modal is still reachable
+              // from the row's own action, so a reviewer working a queue does
+              // not have to round-trip through the detail screen.
+              onPress={() =>
+                navigation.navigate('CompanyDetail', {
+                  id: item.id,
+                  name: item.name,
+                })
+              }
+              onReview={() => openModal(item)}
+            />
           )}
           contentContainerStyle={S.listContent}
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
+          // Pull-to-refresh: the header icon was the only way to reload, which
+          // is not where anyone reaches for it on a list.
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
-            <View style={S.empty}>
-              <Feather name="briefcase" size={40} color={colors.textTertiary} />
-              <Text style={S.emptyText}>No companies found</Text>
-            </View>
+            <AdminEmptyState
+              icon="briefcase"
+              title="No companies found"
+              message="Nothing matches this filter yet."
+            />
           }
           ListFooterComponent={
             status === 'loading' && companies.length > 0 ? (
@@ -555,25 +672,8 @@ const S = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  filterGroupLabel: { ...typography.labelSm, color: colors.textTertiary, alignSelf: 'center' },
   filtersContent: { paddingHorizontal: spacing.md, paddingVertical: 10, gap: spacing.xs },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs,
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 20, backgroundColor: colors.neutral100,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.labelSm, color: colors.textSecondary },
-  chipTextActive: { color: colors.neutral0 },
-  chipBadge: {
-    minWidth: 18, height: 18, borderRadius: 9,
-    backgroundColor: colors.border,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xxs,
-  },
-  chipBadgeActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  chipBadgeText: { ...typography.overline, color: colors.textSecondary },
-  chipBadgeTextActive: { color: colors.neutral0 },
-
   listContent: { padding: spacing.md, gap: 10, paddingBottom: 30 },
   companyCard: {
     flexDirection: 'row', alignItems: 'center',
@@ -592,6 +692,9 @@ const S = StyleSheet.create({
   companyInfo: { flex: 1 },
   companyName: { ...typography.h5, color: colors.textPrimary },
   companyMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  companyTrial: { ...typography.labelSm, color: colors.warning },
+  reviewBtn: { marginTop: spacing.xxs, paddingHorizontal: spacing.xs, paddingVertical: spacing.xxs },
+  reviewBtnText: { ...typography.labelSm, color: colors.primary },
   companyPlan: {
     ...typography.overline, color: colors.primary, 
     marginTop: 3, backgroundColor: colors.primaryLighter,
@@ -606,11 +709,6 @@ const S = StyleSheet.create({
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadingText: { ...typography.bodySm, color: colors.textSecondary },
-  errorText: { ...typography.bodySm, color: colors.danger, textAlign: 'center', paddingHorizontal: spacing.lg },
-  retryBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, backgroundColor: colors.primary, borderRadius: radius.sm },
-  retryText: { color: colors.neutral0, ...typography.labelMd },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyText: { ...typography.bodySm, color: colors.textSecondary },
 
   // Modal
   modalOverlay: {

@@ -10,12 +10,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   StatusBar,
   Linking,
 } from 'react-native';
 import { Alert } from '../../../utils/alert';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -23,8 +21,9 @@ import { useAppSelector } from '../../../hooks/useReduxHooks';
 import { useSignOut } from '../../../hooks/useSignOut';
 import { selectUser } from '../../Auth/authSlice';
 import { authForgotPassword } from '../../../networks/auth/authNetwork';
-import { NOTIFICATION_ICON_NAME } from '../../../components/shared/NotificationIcon';
+import { runExpiryScanAPI } from '../../../networks/billing/billingNetwork';
 import { THEME, statusStyle } from '../../../theme';
+import packageJson from '../../../../package.json';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
 
 // Design-system tokens (see src/theme/theme.ts).
@@ -35,7 +34,11 @@ const DOCS_URL = 'https://github.com/waleedhassan17/FinMatrix';
 const SUPPORT_EMAIL = 'waleedhassansfd@gmail.com';
 // Namespaced like the session keys in utils/storageUtils, and for the same
 // reason: on web the console and the tenant app can share a localStorage origin.
-const NOTIF_PREFS_KEY = '@finmatrix-admin/notifPrefs';
+// Read from the manifest rather than typed in. The screen used to claim
+// v2.4.1 in two places while package.json and app.json both said 1.0.0 -- and
+// a version string that disagrees with the build is worse than none, because
+// it is the first thing anyone quotes in a bug report.
+const APP_VERSION: string = (packageJson as { version: string }).version;
 
 // ── Reusable Section ──────────────────────────────────
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -46,27 +49,24 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 );
 
 // ── Setting Row ───────────────────────────────────────
+// `disabled` and its "Soon" tag went with the four rows that were the only
+// things using them. Leaving the mechanism behind is how a placeholder row
+// gets added back -- the affordance invites it. Same for the toggle branch:
+// the only two toggles wrote to AsyncStorage and nothing read them.
 const SettingRow: React.FC<{
   icon: string;
   iconColor?: string;
   label: string;
   value?: string;
-  toggle?: boolean;
-  toggleValue?: boolean;
-  onToggle?: (v: boolean) => void;
   onPress?: () => void;
   isLast?: boolean;
   danger?: boolean;
-  disabled?: boolean; // feature not available yet → greyed, non-tappable, "Soon" tag
-}> = ({
-  icon, iconColor, label, value, toggle, toggleValue,
-  onToggle, onPress, isLast, danger, disabled,
-}) => (
+}> = ({ icon, iconColor, label, value, onPress, isLast, danger }) => (
   <TouchableOpacity
-    style={[S.settingRow, !isLast && S.settingRowBorder, disabled && { opacity: 0.55 }]}
-    onPress={disabled ? undefined : onPress}
-    activeOpacity={toggle || disabled ? 1 : 0.7}
-    disabled={disabled || (toggle && !onToggle) || (!onPress && !toggle)}
+    style={[S.settingRow, !isLast && S.settingRowBorder]}
+    onPress={onPress}
+    activeOpacity={0.7}
+    disabled={!onPress}
   >
     <View style={[S.settingIconWrap, { backgroundColor: danger ? colors.dangerLighter : colors.primaryLighter }]}>
       <Feather name={icon as any} size={16} color={danger ? colors.danger : (iconColor ?? colors.primary)} />
@@ -74,28 +74,11 @@ const SettingRow: React.FC<{
     <Text style={[S.settingLabel, danger && { color: colors.danger }]}>{label}</Text>
     <View style={S.settingRight}>
       {value ? <Text style={S.settingValue}>{value}</Text> : null}
-      {disabled ? (
-        <View style={S.soonTag}><Text style={S.soonTagText}>Soon</Text></View>
-      ) : toggle ? (
-        <Switch
-          value={toggleValue}
-          onValueChange={onToggle}
-          trackColor={{ false: colors.neutral200, true: `${colors.primary}80` }}
-          thumbColor={toggleValue ? colors.primary : colors.neutral400}
-        />
-      ) : onPress && !danger ? (
+      {onPress && !danger ? (
         <Feather name="chevron-right" size={16} color={colors.textTertiary} />
       ) : null}
     </View>
   </TouchableOpacity>
-);
-
-// ── Info Badge ────────────────────────────────────────
-const InfoBadge: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
-  <View style={S.infoBadge}>
-    <Text style={S.infoBadgeLabel}>{label}</Text>
-    <Text style={[S.infoBadgeValue, { color }]}>{value}</Text>
-  </View>
 );
 
 // ═══════════════════════════════════════════════════════
@@ -106,27 +89,51 @@ const AdminSettingsScreen: React.FC = () => {
   const user = useAppSelector(selectUser);
   const displayName = user?.displayName ?? 'Admin';
 
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [pushAlerts, setPushAlerts] = useState(true);
   const [sendingReset, setSendingReset] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
-  // Notification preferences are a real (locally persisted) setting.
-  useEffect(() => {
-    AsyncStorage.getItem(NOTIF_PREFS_KEY).then(raw => {
-      if (!raw) return;
-      try {
-        const p = JSON.parse(raw);
-        if (typeof p.email === 'boolean') setEmailAlerts(p.email);
-        if (typeof p.push === 'boolean') setPushAlerts(p.push);
-      } catch { /* ignore */ }
-    });
-  }, []);
-
-  const persistPrefs = (email: boolean, push: boolean) => {
-    AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify({ email, push })).catch(() => {});
+  /**
+   * The nightly expiry sweep, on demand.
+   *
+   * Destructive at scale -- it deactivates every company whose subscription
+   * has lapsed and emails all of them -- so it confirms first, and reports the
+   * counts it actually did rather than a toast saying "done".
+   */
+  const handleExpiryScan = () => {
+    Alert.alert(
+      'Run the expiry scan now?',
+      'Every company whose subscription has lapsed will be deactivated, and those about to lapse will be emailed. This is the same work the nightly job does.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Run the scan',
+          style: 'destructive',
+          onPress: async () => {
+            setScanning(true);
+            try {
+              const r = await runExpiryScanAPI();
+              Alert.alert(
+                'Scan complete',
+                [
+                  `Companies scanned: ${r.scanned}`,
+                  `Reminders sent: ${r.remindersSent}`,
+                  `Marked expiring: ${r.expiringMarked}`,
+                  `Deactivated: ${r.deactivated}`,
+                ].join('\n'),
+              );
+            } catch (e) {
+              Alert.alert(
+                'The scan did not run',
+                e instanceof Error && e.message ? e.message : 'Please try again.',
+              );
+            } finally {
+              setScanning(false);
+            }
+          },
+        },
+      ],
+    );
   };
-  const onEmailAlerts = (v: boolean) => { setEmailAlerts(v); persistPrefs(v, pushAlerts); };
-  const onPushAlerts = (v: boolean) => { setPushAlerts(v); persistPrefs(emailAlerts, v); };
 
   const { signingOut, confirmSignOut } = useSignOut();
 
@@ -188,16 +195,12 @@ const AdminSettingsScreen: React.FC = () => {
           </View>
         </LinearGradient>
 
-        {/* Platform Status */}
-        <View style={S.statusBar}>
-          <InfoBadge label="API" value="Online" color={colors.success} />
-          <View style={S.statusDivider} />
-          <InfoBadge label="Version" value="2.4.1" color={colors.primary} />
-          <View style={S.statusDivider} />
-          <InfoBadge label="Mode" value="Live" color={colors.success} />
-          <View style={S.statusDivider} />
-          <InfoBadge label="Region" value="US-East" color={colors.textSecondary} />
-        </View>
+        {/* A "Platform Status" bar used to sit here reading
+            API: Online · Version 2.4.1 · Mode: Live · Region: US-East.
+            All four were static strings. There is no health endpoint behind
+            "Online", nothing sets "Live", the region was invented, and 2.4.1
+            contradicted both package.json and app.json, which say 1.0.0. A
+            status display that cannot report a bad status is decoration. */}
 
         {/* Account */}
         <Section title="Account">
@@ -212,47 +215,41 @@ const AdminSettingsScreen: React.FC = () => {
           />
         </Section>
 
-        {/* Platform (read-only status) */}
-        <Section title="Platform">
-          <SettingRow icon="database" iconColor={THEME.colors.success} label="Database" value="PostgreSQL" />
-          <SettingRow icon="server" iconColor={THEME.colors.secondary} label="API Endpoint" value="Heroku" />
-          {/* No backend yet → clearly disabled rather than a fake toggle. */}
-          <SettingRow icon="tool" iconColor={THEME.colors.warning} label="Maintenance Mode" disabled />
-          <SettingRow icon="key" iconColor={THEME.colors.warning} label="API Keys" disabled isLast />
-        </Section>
-
-        {/* Notifications (locally persisted preferences) */}
-        <Section title="Notifications">
+        {/* Maintenance */}
+        <Section title="Maintenance">
           <SettingRow
-            icon="mail"
-            iconColor={THEME.colors.info}
-            label="Email Alerts"
-            toggle
-            toggleValue={emailAlerts}
-            onToggle={onEmailAlerts}
-          />
-          <SettingRow
-            icon={NOTIFICATION_ICON_NAME}
-            iconColor={THEME.colors.secondary}
-            label="Push Notifications"
-            toggle
-            toggleValue={pushAlerts}
-            onToggle={onPushAlerts}
+            icon="refresh-cw"
+            iconColor={THEME.colors.warning}
+            label="Run expiry scan"
+            value={scanning ? 'Running…' : undefined}
+            onPress={handleExpiryScan}
             isLast
           />
         </Section>
 
-        {/* Security */}
-        <Section title="Security">
-          <SettingRow icon="shield" iconColor={colors.textTertiary} label="Two-Factor Auth" disabled />
-          <SettingRow icon="activity" iconColor={colors.primary} label="Audit Log" disabled isLast />
-        </Section>
+        {/* Four rows used to sit under "Platform" and "Security": Maintenance
+            Mode, API Keys, Two-Factor Auth and Audit Log, each tagged "Soon"
+            and permanently disabled. None had a backend, and none was being
+            built. A roadmap rendered as UI reads as a broken feature.
+
+            Two more were decoration: Database: PostgreSQL and API Endpoint:
+            Heroku, neither of which an operator can act on.
+
+            The notification toggles went with them. They wrote to AsyncStorage
+            and nothing read it back -- and the app has no push dependency at
+            all, so "Push Notifications: on" could not have meant anything. */}
 
         {/* Support */}
         <Section title="Support">
           <SettingRow icon="book-open" iconColor={colors.primary} label="Documentation" onPress={() => openUrl(DOCS_URL)} />
           <SettingRow icon="message-circle" iconColor={colors.success} label="Contact Support" onPress={() => openUrl(`mailto:${SUPPORT_EMAIL}?subject=FinMatrix%20Support`)} />
-          <SettingRow icon="info" iconColor={colors.textTertiary} label="About FinMatrix" value="v2.4.1" isLast />
+          <SettingRow
+            icon="info"
+            iconColor={colors.textTertiary}
+            label="About FinMatrix Admin"
+            value={`v${APP_VERSION}`}
+            isLast
+          />
         </Section>
 
         {/* Sign Out */}
@@ -310,17 +307,6 @@ const S = StyleSheet.create({
   },
   profileRoleText: { ...typography.overline, color: colors.neutral0 },
 
-  // Status bar
-  statusBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
-    paddingVertical: spacing.sm,
-  },
-  statusDivider: { width: 1, backgroundColor: colors.border, marginVertical: 2 },
-  infoBadge: { flex: 1, alignItems: 'center', gap: 3 },
-  infoBadgeLabel: { ...typography.overline, color: colors.textTertiary },
-  infoBadgeValue: { ...typography.labelSm },
 
   // Section
   section: { gap: spacing.xs },
@@ -343,8 +329,6 @@ const S = StyleSheet.create({
   settingLabel: { flex: 1, ...typography.h5, color: colors.textPrimary },
   settingRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   settingValue: { ...typography.labelSm, color: colors.textSecondary },
-  soonTag: { backgroundColor: colors.neutral100, borderRadius: radius.xs, paddingHorizontal: 7, paddingVertical: 2 },
-  soonTagText: { ...typography.overline, color: colors.textTertiary, letterSpacing: 0.4 },
 
   footer: {
     textAlign: 'center', ...typography.caption, color: colors.textTertiary,

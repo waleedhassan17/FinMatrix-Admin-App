@@ -28,6 +28,7 @@ import type {
   RevenueSummary,
   SubmissionKindFilter,
 } from '../../models/billingModel';
+import type { ExpiryScanResult } from '../../models/superAdminModel';
 import {
   billingEnvelopeSerializer,
   submissionListSerializer,
@@ -147,4 +148,27 @@ export const downloadSubmissionScreenshot = async (id: string): Promise<string> 
   const result = await FileSystem.downloadAsync(`${API_BASE_URL}${path}`, dest, { headers });
   if (result.status >= 400) throw notAvailable(result.status);
   return result.uri;
+};
+
+/**
+ * Run the expiry sweep now, rather than waiting for the 1 AM cron.
+ *
+ * Destructive at scale: it deactivates every company whose subscription has
+ * lapsed, marks the ones about to lapse, and emails all of them. Callers
+ * confirm first and show the returned counts, so the operator can see what it
+ * actually did rather than trusting a toast.
+ */
+export const runExpiryScanAPI = async (): Promise<ExpiryScanResult> => {
+  try {
+    const res = await api.post('/admin/payment-submissions/run-expiry-scan');
+    const body = unwrap(res.data) as Partial<ExpiryScanResult> | undefined;
+    return {
+      remindersSent: body?.remindersSent ?? 0,
+      expiringMarked: body?.expiringMarked ?? 0,
+      deactivated: body?.deactivated ?? 0,
+      scanned: body?.scanned ?? 0,
+    };
+  } catch (e: any) {
+    throw new Error(extractErrorMessage(e));
+  }
 };

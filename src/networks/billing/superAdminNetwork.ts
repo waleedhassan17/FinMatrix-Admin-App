@@ -9,6 +9,7 @@
 // deleted from FinMatrix when the console screens are removed there.
 
 import { api, extractErrorMessage } from '../network/apiHelpers';
+import type { FeatureOverrideInput } from '../../models/superAdminModel';
 
 export const getSuperAdminStatsAPI = async (): Promise<any> => {
   try {
@@ -23,10 +24,19 @@ export const getAllCompaniesAPI = async (
   page = 1,
   limit = 20,
   status?: string,
+  isTrial?: boolean,
 ): Promise<any> => {
   try {
     const res = await api.get('/super-admin/companies', {
-      params: { page, limit, ...(status ? { status } : {}) },
+      params: {
+        page,
+        limit,
+        ...(status ? { status } : {}),
+        // Only sent when filtering. The server ignores anything that is not
+        // 'true'/'false', and page/limit go through a ParseIntPipe that 400s
+        // on an empty string -- so undefined is omitted, never serialised.
+        ...(isTrial === undefined ? {} : { isTrial: String(isTrial) }),
+      },
     });
     return res.data;
   } catch (e: any) {
@@ -53,6 +63,29 @@ export const updateCompanyStatusAPI = async (
       status,
       rejectionReason,
     });
+    return res.data;
+  } catch (e: any) {
+    throw new Error(extractErrorMessage(e));
+  }
+};
+
+/**
+ * The feature kill switch.
+ *
+ * allFeaturesUnlocked bypasses the server's FeatureGuard before any plan or
+ * company-type logic runs, so a company carrying it sees everything regardless
+ * of what it pays for. Callers confirm first and describe it by effect, not by
+ * field name.
+ */
+export const updateFeatureOverrideAPI = async (
+  id: string,
+  input: FeatureOverrideInput,
+): Promise<any> => {
+  try {
+    const res = await api.patch(
+      `/super-admin/companies/${id}/feature-override`,
+      input,
+    );
     return res.data;
   } catch (e: any) {
     throw new Error(extractErrorMessage(e));

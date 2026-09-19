@@ -12,12 +12,16 @@ import {
   updateSubscriptionPlanAPI,
   deleteSubscriptionPlanAPI,
   updateCompanyStatusAPI,
+  getCompanyDetailAPI,
+  updateFeatureOverrideAPI,
   assignSubscriptionAPI,
   getAllSubscriptionsAPI,
 } from '../../networks/billing/superAdminNetwork';
 import type {
   PlatformStats,
   CompanyListItem,
+  CompanyDetail,
+  FeatureOverrideInput,
   SubscriptionPlan,
   CompanySubscription,
 } from '../../models/superAdminModel';
@@ -29,6 +33,8 @@ import {
   planResponseSerializer,
   subscriptionListResponseSerializer,
   subscriptionResponseSerializer,
+  companyDetailResponseSerializer,
+  featureOverrideResponseSerializer,
 } from '../../serializers/superAdminSerializer';
 
 // Entity shapes live in models/superAdminModel.ts; re-exported here so
@@ -36,6 +42,7 @@ import {
 export type {
   PlatformStats,
   CompanyListItem,
+  CompanyDetail,
   SubscriptionPlan,
   CompanySubscription,
 };
@@ -50,16 +57,45 @@ export interface SuperAdminState {
   companiesPage: number;
   companiesStatus: 'idle' | 'loading' | 'failed';
   companiesFilter: string;
+  /** undefined = no ?isTrial param at all, which the server reads as "any". */
+  companiesTrial: boolean | undefined;
   companiesError: string;
 
   plans: SubscriptionPlan[];
   plansStatus: 'idle' | 'loading' | 'failed';
   plansError: string;
 
+  detail: CompanyDetail | null;
+  detailStatus: 'idle' | 'loading' | 'failed';
+  detailError: string;
+
   subscriptions: CompanySubscription[];
   subsTotal: number;
+  subsPage: number;
   subsStatus: 'idle' | 'loading' | 'failed';
+  subsError: string;
+
+  // One sub-state shared by every MUTATING thunk, rather than a status pair per
+  // thunk. Read thunks keep their own (statsStatus, companiesStatus, …) because
+  // screens render those as skeletons in different places; a mutation is always
+  // "the thing I just pressed", so one pair is enough and every action screen
+  // reads the same two selectors.
+  actionStatus: 'idle' | 'loading' | 'failed';
+  actionError: string;
 }
+
+// Shared handlers for the mutating thunks below.
+const beginAction = (s: SuperAdminState) => {
+  s.actionStatus = 'loading';
+  s.actionError = '';
+};
+const endAction = (s: SuperAdminState) => {
+  s.actionStatus = 'idle';
+};
+const failAction = (s: SuperAdminState, action: { error?: { message?: string } }) => {
+  s.actionStatus = 'failed';
+  s.actionError = action.error?.message ?? 'That did not work. Please try again.';
+};
 
 const initialState: SuperAdminState = {
   stats: null,
@@ -71,15 +107,25 @@ const initialState: SuperAdminState = {
   companiesPage: 1,
   companiesStatus: 'idle',
   companiesFilter: 'all',
+  companiesTrial: undefined,
   companiesError: '',
 
   plans: [],
   plansStatus: 'idle',
   plansError: '',
 
+  detail: null,
+  detailStatus: 'idle',
+  detailError: '',
+
   subscriptions: [],
   subsTotal: 0,
+  subsPage: 1,
   subsStatus: 'idle',
+  subsError: '',
+
+  actionStatus: 'idle',
+  actionError: '',
 };
 
 export const superAdminSlice = createAppSlice({
@@ -89,6 +135,14 @@ export const superAdminSlice = createAppSlice({
     setCompaniesFilter: create.reducer(
       (state, action: PayloadAction<string>) => {
         state.companiesFilter = action.payload;
+        state.companiesPage = 1;
+        state.companies = [];
+      },
+    ),
+
+    setCompaniesTrial: create.reducer(
+      (state, action: PayloadAction<boolean | undefined>) => {
+        state.companiesTrial = action.payload;
         state.companiesPage = 1;
         state.companies = [];
       },
@@ -117,13 +171,20 @@ export const superAdminSlice = createAppSlice({
 
     loadCompanies: create.asyncThunk(
       async (
-        args: { page?: number; filter?: string } | undefined,
+        args: { page?: number; filter?: string; isTrial?: boolean } | undefined,
         { getState },
       ) => {
         const state = (getState() as { superAdmin: SuperAdminState }).superAdmin;
         const page = args?.page ?? state.companiesPage;
         const filter = args?.filter ?? state.companiesFilter;
-        const res = await getAllCompaniesAPI(page, 20, filter === 'all' ? undefined : filter);
+        const isTrial =
+          args && 'isTrial' in args ? args.isTrial : state.companiesTrial;
+        const res = await getAllCompaniesAPI(
+          page,
+          20,
+          filter === 'all' ? undefined : filter,
+          isTrial,
+        );
         return { ...companyListResponseSerializer(res), page };
       },
       {
@@ -154,16 +215,75 @@ export const superAdminSlice = createAppSlice({
         return companyStatusResponseSerializer(res);
       },
       {
+        pending: beginAction,
+        rejected: failAction,
         fulfilled: (state, action) => {
+          endAction(state);
+
           const idx = state.companies.findIndex(c => c.id === action.payload.id);
-          if (idx !== -1) {
-            state.companies[idx].status = action.payload.status;
-            state.companies[idx].rejectionReason = action.payload.rejectionReason;
-          }
-          if (state.stats) {
-            // Recalculate stats optimistically
-            state.stats.companies.pending = state.companies.filter(c => c.status === 'pending').length;
-            state.stats.companies.active = state.companies.filter(c => c.status === 'active').length;
+          if (idx === -1) return;
+
+          const previous = state.companies[idx].status;
+          const next = action.payload.status;
+          state.companies[idx].status = next;
+          state.companies[idx].rejectionReason = action.payload.rejectionReason;
+
+          // Move the counts by a delta rather than recounting state.companies.
+          // That array is only the page currently loaded, so on a platform with
+          // 500 companies a recount reported the dashboard's pending total as
+          // however many happened to be on screen.
+          if (!state.stats || previous === next) return;
+          const buckets = state.stats.companies;
+          const bump = (key: keyof typeof buckets, by: number) => {
+            const value = buckets[key];
+            if (typeof value === 'number') {
+              buckets[key] = Math.max(0, value + by) as typeof value;
+            }
+          };
+          bump(previous as keyof typeof buckets, -1);
+          bump(next as keyof typeof buckets, 1);
+        },
+      },
+    ),
+
+    loadCompanyDetail: create.asyncThunk(
+      async (id: string) => {
+        const res = await getCompanyDetailAPI(id);
+        return companyDetailResponseSerializer(res);
+      },
+      {
+        pending: state => {
+          state.detailStatus = 'loading';
+          state.detailError = '';
+        },
+        fulfilled: (state, action) => {
+          state.detail = action.payload;
+          state.detailStatus = 'idle';
+        },
+        rejected: (state, action) => {
+          state.detailStatus = 'failed';
+          state.detailError =
+            (action.error as any)?.message ?? 'Failed to load this company';
+        },
+      },
+    ),
+
+    setCompanyFeatureOverride: create.asyncThunk(
+      async (args: { id: string; input: FeatureOverrideInput }) => {
+        const res = await updateFeatureOverrideAPI(args.id, args.input);
+        return featureOverrideResponseSerializer(res);
+      },
+      {
+        pending: beginAction,
+        rejected: failAction,
+        fulfilled: (state, action) => {
+          endAction(state);
+          // Merge rather than refetch: the payload carries exactly the three
+          // fields the server applied.
+          if (state.detail && state.detail.id === action.payload.id) {
+            state.detail.companyType = action.payload.companyType;
+            state.detail.inventoryEnabled = action.payload.inventoryEnabled;
+            state.detail.allFeaturesUnlocked = action.payload.allFeaturesUnlocked;
           }
         },
       },
@@ -228,18 +348,30 @@ export const superAdminSlice = createAppSlice({
     ),
 
     loadSubscriptions: create.asyncThunk(
-      async () => {
-        const res = await getAllSubscriptionsAPI(1, 50);
-        return subscriptionListResponseSerializer(res);
+      async (args: { page?: number } | undefined) => {
+        const page = args?.page ?? 1;
+        const res = await getAllSubscriptionsAPI(page, 20);
+        return { ...subscriptionListResponseSerializer(res), page };
       },
       {
-        pending: state => { state.subsStatus = 'loading'; },
+        pending: state => {
+          state.subsStatus = 'loading';
+          state.subsError = '';
+        },
         fulfilled: (state, action) => {
-          state.subscriptions = action.payload.data;
+          state.subscriptions =
+            action.payload.page === 1
+              ? action.payload.data
+              : [...state.subscriptions, ...action.payload.data];
           state.subsTotal = action.payload.total;
+          state.subsPage = action.payload.page;
           state.subsStatus = 'idle';
         },
-        rejected: state => { state.subsStatus = 'failed'; },
+        rejected: (state, action) => {
+          state.subsStatus = 'failed';
+          state.subsError =
+            (action.error as any)?.message ?? 'Failed to load subscriptions';
+        },
       },
     ),
 
@@ -249,8 +381,12 @@ export const superAdminSlice = createAppSlice({
         return subscriptionResponseSerializer(res);
       },
       {
+        pending: beginAction,
+        rejected: failAction,
         fulfilled: (state, action) => {
+          endAction(state);
           state.subscriptions.unshift(action.payload);
+          state.subsTotal += 1;
         },
       },
     ),
@@ -263,19 +399,33 @@ export const superAdminSlice = createAppSlice({
     selectCompaniesTotal: s => s.companiesTotal,
     selectCompaniesStatus: s => s.companiesStatus,
     selectCompaniesFilter: s => s.companiesFilter,
+    selectCompaniesTrial: s => s.companiesTrial,
     selectCompaniesError: s => s.companiesError,
     selectPlans: s => s.plans,
     selectPlansStatus: s => s.plansStatus,
+    // plansError was written on every failed load and had no selector, so the
+    // Plans screen could not render a failure even though it had one to show.
+    selectPlansError: s => s.plansError,
     selectSubscriptions: s => s.subscriptions,
+    selectSubsTotal: s => s.subsTotal,
     selectSubsStatus: s => s.subsStatus,
+    selectSubsError: s => s.subsError,
+    selectCompanyDetail: s => s.detail,
+    selectCompanyDetailStatus: s => s.detailStatus,
+    selectCompanyDetailError: s => s.detailError,
+    selectActionStatus: s => s.actionStatus,
+    selectActionError: s => s.actionError,
   },
 });
 
 export const {
   setCompaniesFilter,
+  setCompaniesTrial,
   loadPlatformStats,
   loadCompanies,
   updateCompanyStatusLocal,
+  loadCompanyDetail,
+  setCompanyFeatureOverride,
   loadPlans,
   createPlan,
   updatePlan,
@@ -292,9 +442,18 @@ export const {
   selectCompaniesTotal,
   selectCompaniesStatus,
   selectCompaniesFilter,
+  selectCompaniesTrial,
   selectCompaniesError,
   selectPlans,
   selectPlansStatus,
+  selectPlansError,
   selectSubscriptions,
+  selectSubsTotal,
   selectSubsStatus,
+  selectSubsError,
+  selectCompanyDetail,
+  selectCompanyDetailStatus,
+  selectCompanyDetailError,
+  selectActionStatus,
+  selectActionError,
 } = superAdminSlice.selectors;

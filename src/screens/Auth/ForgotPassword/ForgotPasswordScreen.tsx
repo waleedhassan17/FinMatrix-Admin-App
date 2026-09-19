@@ -19,6 +19,7 @@ import {
   authResetPassword
 } from '../../../networks/auth/authNetwork';
 import { useAppSelector } from '../../../hooks/useReduxHooks';
+import { isValidPassword, PASSWORD_RULE_MESSAGE } from '../../../models/authModel';
 import { selectSelectedRole } from '../authSlice';
 import {
   AuthLayout,
@@ -43,7 +44,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 type Step = 'request' | 'otp' | 'reset';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8}$/;
 const RESEND_COOLDOWN = 60;
 
 const STEP_INDEX: Record<Step, number> = { request: 1, otp: 2, reset: 3 };
@@ -141,8 +141,8 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleReset = async () => {
-    if (!PASSWORD_REGEX.test(password)) {
-      setError('Password must be 8+ chars with upper, lower and a number');
+    if (!isValidPassword(password)) {
+      setError(PASSWORD_RULE_MESSAGE);
       return;
     }
     if (password !== confirm) {
