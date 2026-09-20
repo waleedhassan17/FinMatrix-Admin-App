@@ -115,6 +115,16 @@ export interface ExpiryScanResult {
   scanned: number;
 }
 
+/** What the console may change on a plan. Amounts in MINOR UNITS (paisa). */
+export interface UpdatePlanInput {
+  label?: string;
+  monthlyMinorUnits?: number;
+  priceMinorUnits?: number;
+  deliveryPersonnelLimit?: number;
+  /** false retires the plan: sold to nobody new, unchanged for its members. */
+  isOffered?: boolean;
+}
+
 export interface SubscriptionPlan {
   id: string;
   name: string;
@@ -134,6 +144,15 @@ export interface SubscriptionPlan {
   totalLabel?: string;
   currency?: string;
   deliveryPersonnelLimit?: number;
+  /** Per-month price in MINOR UNITS — the editable number, not the label. */
+  monthlyMinorUnits?: number;
+  /** TOTAL charged up front for the period, in minor units. */
+  totalMinorUnits?: number;
+  /** Still sold to new customers. A retired plan keeps working for its members. */
+  isOffered?: boolean;
+  /** Whether an admin has changed anything from the configured default. */
+  isEdited?: boolean;
+  editedFields?: string[];
 }
 
 export interface CompanySubscription {

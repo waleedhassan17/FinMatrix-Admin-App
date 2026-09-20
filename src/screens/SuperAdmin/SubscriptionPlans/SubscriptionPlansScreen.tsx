@@ -20,6 +20,8 @@ import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
 import { AdminScreenHeader } from '../../../components/admin/AdminUI';
 import SubscriptionsPanel from './SubscriptionsPanel';
+import EditPlanSheet from './EditPlanSheet';
+import type { SubscriptionPlan } from '../../../models/superAdminModel';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
@@ -70,6 +72,7 @@ interface ServerPlan {
 }
 
 interface DisplayPlan {
+  raw?: SubscriptionPlan;
   name: string;
   description: string;
   isFree: boolean;
@@ -98,7 +101,11 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 // ── Plan Card (display-only; same UI used in signup) ──
-const PlanCard: React.FC<{ plan: DisplayPlan; gradientIdx: number }> = ({ plan, gradientIdx }) => {
+const PlanCard: React.FC<{
+  plan: DisplayPlan;
+  gradientIdx: number;
+  onEdit?: () => void;
+}> = ({ plan, gradientIdx, onEdit }) => {
   const gradient = PLAN_GRADIENTS[gradientIdx % PLAN_GRADIENTS.length];
 
   return (
@@ -108,7 +115,9 @@ const PlanCard: React.FC<{ plan: DisplayPlan; gradientIdx: number }> = ({ plan, 
         <View style={S.planHeaderRow}>
           <Text style={S.planName}>{plan.name}</Text>
           <View style={S.statusBadge}>
-            <Text style={S.statusBadgeText}>Active</Text>
+            <Text style={S.statusBadgeText}>
+              {plan.raw?.isOffered === false ? 'Retired' : 'Active'}
+            </Text>
           </View>
         </View>
         {plan.description ? (
@@ -149,6 +158,18 @@ const PlanCard: React.FC<{ plan: DisplayPlan; gradientIdx: number }> = ({ plan, 
         {/* The old third branch printed "<n> companies on this plan" from a
             companyCount nothing ever computed, so it could only ever render a
             false "0 companies". Dropped rather than left lying. */}
+        {onEdit ? (
+          <TouchableOpacity
+            onPress={onEdit}
+            style={S.editBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${plan.name}`}
+          >
+            <Feather name="edit-2" size={14} color={colors.primary} />
+            <Text style={S.editBtnText}>Edit plan</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {plan.totalLabel ? (
           <View style={S.planCountRow}>
             <Feather name="briefcase" size={13} color={colors.textTertiary} />
@@ -173,6 +194,7 @@ const SubscriptionPlansScreen: React.FC = () => {
   const plansError = useAppSelector(selectPlansError);
   // Two views of the same subject, rather than a seventh tab in the tab bar.
   const [tab, setTab] = useState<'catalogue' | 'subscriptions'>('catalogue');
+  const [editing, setEditing] = useState<SubscriptionPlan | null>(null);
 
   useEffect(() => {
     dispatch(loadPlans());
@@ -192,6 +214,7 @@ const SubscriptionPlansScreen: React.FC = () => {
         (!WAREHOUSE_ONLY_BUILD || p.companyType === DEFAULT_COMPANY_TYPE),
     );
     return tierPlans.map(p => ({
+      raw: p as unknown as SubscriptionPlan,
       name: p.name,
       description:
         p.description ?? `${TIER_LABELS[p.companyType ?? ''] ?? ''} plan`,
@@ -287,18 +310,39 @@ const SubscriptionPlansScreen: React.FC = () => {
                 <View key={tier} style={{ gap: spacing.sm }}>
                   <Text style={S.tierHeading}>{TIER_LABELS[tier]}</Text>
                   {tierPlans.map((p, index) => (
-                    <PlanCard key={p.name} plan={p} gradientIdx={index} />
+                    <PlanCard
+                      key={p.name}
+                      plan={p}
+                      gradientIdx={index}
+                      onEdit={p.raw ? () => setEditing(p.raw!) : undefined}
+                    />
                   ))}
                 </View>
               );
             })
           ) : (
             displayPlans.map((p, index) => (
-              <PlanCard key={p.name} plan={p} gradientIdx={index} />
+              <PlanCard
+                key={p.name}
+                plan={p}
+                gradientIdx={index}
+                onEdit={p.raw ? () => setEditing(p.raw!) : undefined}
+              />
             ))
           )}
         </ScrollView>
       )}
+      {/* Keyed on the plan, so opening a different one starts from its own
+          values rather than the previous plan's. */}
+      {editing ? (
+        <EditPlanSheet
+          key={editing.id}
+          visible
+          plan={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => dispatch(loadPlans())}
+        />
+      ) : null}
     </SafeAreaView>
   );
 };
@@ -320,6 +364,18 @@ const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   backBtn: { padding: spacing.xxs },
 
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  editBtnText: { ...typography.labelMd, color: colors.primary },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadingText: { ...typography.bodySm, color: colors.textSecondary },
   errorTitle: { ...typography.h4, color: colors.textPrimary },

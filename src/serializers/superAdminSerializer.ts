@@ -241,6 +241,11 @@ export const planRowSerializer = (raw: unknown): SubscriptionPlan => {
     totalLabel: str(p.totalLabel),
     currency: str(p.currency, 'PKR'),
     deliveryPersonnelLimit: num(p.deliveryPersonnelLimit),
+    monthlyMinorUnits: num(p.monthlyMinorUnits),
+    totalMinorUnits: num(p.totalMinorUnits),
+    isOffered: bool(p.isOffered, true),
+    isEdited: bool(p.isEdited),
+    editedFields: arr<string>(p.editedFields),
   } as SubscriptionPlan;
 };
 

@@ -101,6 +101,50 @@ export const getSubscriptionPlansAPI = async (): Promise<any> => {
   }
 };
 
+/**
+ * Edit one plan.
+ *
+ * `key` is the plan key the catalogue returns as `id`
+ * ('warehouse_starter_6mo'), not a UUID. Only what is passed is changed, and
+ * amounts are in MINOR UNITS -- the conversion from rupees happens in the
+ * screen, once, so a decimal never reaches the wire.
+ *
+ * This changes what NEW customers are quoted and charged. Nobody already on
+ * the plan is re-billed.
+ */
+export const updatePlanAPI = async (
+  key: string,
+  input: {
+    label?: string;
+    monthlyMinorUnits?: number;
+    priceMinorUnits?: number;
+    deliveryPersonnelLimit?: number;
+    isOffered?: boolean;
+  },
+): Promise<any> => {
+  try {
+    const res = await api.patch(
+      `/super-admin/plans/${encodeURIComponent(key)}`,
+      input,
+    );
+    return res.data;
+  } catch (e: any) {
+    throw new Error(extractErrorMessage(e));
+  }
+};
+
+/** Put a plan back to exactly what the server configuration declares. */
+export const resetPlanAPI = async (key: string): Promise<any> => {
+  try {
+    const res = await api.delete(
+      `/super-admin/plans/${encodeURIComponent(key)}`,
+    );
+    return res.data;
+  } catch (e: any) {
+    throw new Error(extractErrorMessage(e));
+  }
+};
+
 export const createSubscriptionPlanAPI = async (data: {
   name: string;
   description?: string;
