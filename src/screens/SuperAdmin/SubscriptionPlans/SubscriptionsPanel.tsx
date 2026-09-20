@@ -3,17 +3,24 @@
 // ═══════════════════════════════════════════════════════
 // GET and POST /super-admin/subscriptions.
 //
-// The network functions, the thunks and the slice state for this all existed
-// already and were unreachable -- nothing in the app ever dispatched
-// loadSubscriptions or assignPlan. This is the screen they were written for.
+// READ-ONLY, and that is not a simplification -- assignment cannot currently
+// be done correctly. There are two disjoint plan universes on the server:
 //
-// It sits as a tab beside the plan catalogue rather than as a seventh tab:
-// "what we sell" and "who we put on what" are the same question asked twice.
+//   plan-config.ts      the tiers, priced in PKR, ids like
+//                       'warehouse_starter_6mo'. What the catalogue lists,
+//                       what a customer is charged, what the limits come from.
 //
-// The caveat in the banner is load-bearing. This endpoint writes the legacy
-// company_subscriptions table, which is DECOUPLED from the
-// companies.subscription_plan columns the server actually gates access on.
-// Assigning here does not activate anyone.
+//   subscription_plans  a UUID-keyed table seeded with Free / Starter /
+//                       Professional / Enterprise at $0 / $29 / $290 -- an
+//                       earlier design, wrong currency, read by nothing
+//                       customer-facing.
+//
+// POST /super-admin/subscriptions resolves planId against the TABLE. A
+// catalogue id fails outright; a table id assigns a company to a dollar plan
+// FinMatrix does not sell. And the row it writes is decoupled from
+// companies.subscription_plan, which is what actually gates access.
+//
+// The list is real -- those rows exist -- so it stays.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -24,13 +31,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
-  ScrollView,
-  TextInput,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
-import { Alert } from '../../../utils/alert';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME } from '../../../theme';
 import {
@@ -40,15 +43,10 @@ import {
 } from '../../../components/admin/AdminUI';
 import {
   loadSubscriptions,
-  assignPlan,
-  loadCompanies,
   selectSubscriptions,
   selectSubsTotal,
   selectSubsStatus,
   selectSubsError,
-  selectCompanies,
-  selectActionStatus,
-  type SubscriptionPlan,
 } from '../superAdminSlice';
 
 const { colors, radius, spacing, typography } = THEME;
@@ -61,17 +59,15 @@ const fmtDate = (iso: string | null): string => {
     : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const SubscriptionsPanel: React.FC<{ plans: SubscriptionPlan[] }> = ({ plans }) => {
+const SubscriptionsPanel: React.FC = () => {
   const dispatch = useAppDispatch();
 
   const subscriptions = useAppSelector(selectSubscriptions);
   const total = useAppSelector(selectSubsTotal);
   const status = useAppSelector(selectSubsStatus);
   const error = useAppSelector(selectSubsError);
-  const actionStatus = useAppSelector(selectActionStatus);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
 
   useEffect(() => {
     dispatch(loadSubscriptions({ page: 1 }));
@@ -111,19 +107,11 @@ const SubscriptionsPanel: React.FC<{ plans: SubscriptionPlan[] }> = ({ plans }) 
       <View style={S.notice}>
         <Feather name="alert-triangle" size={16} color={colors.warning} />
         <Text style={S.noticeText}>
-          Assigning here records a subscription, but does not by itself activate
-          the company or extend its access — those follow the payment flow.
+          Read-only. These record what was assigned historically, but point at
+          a different plan table from the catalogue and from what billing
+          charges. A company's real plan is on its company record.
         </Text>
       </View>
-
-      <TouchableOpacity
-        style={S.assignBtn}
-        onPress={() => setAssignOpen(true)}
-        accessibilityRole="button"
-      >
-        <Feather name="plus" size={16} color={colors.neutral0} />
-        <Text style={S.assignBtnText}>Assign a plan</Text>
-      </TouchableOpacity>
 
       <FlatList
         data={subscriptions}
@@ -164,133 +152,7 @@ const SubscriptionsPanel: React.FC<{ plans: SubscriptionPlan[] }> = ({ plans }) 
         }
       />
 
-      <AssignSheet
-        visible={assignOpen}
-        plans={plans}
-        busy={actionStatus === 'loading'}
-        onClose={() => setAssignOpen(false)}
-        onAssign={async input => {
-          try {
-            await dispatch(assignPlan(input)).unwrap();
-            setAssignOpen(false);
-            Alert.alert('Assigned', 'The subscription has been recorded.');
-          } catch (e) {
-            Alert.alert(
-              'Could not assign the subscription',
-              e instanceof Error && e.message ? e.message : 'Please try again.',
-            );
-          }
-        }}
-      />
     </View>
-  );
-};
-
-// ── Assign sheet ──────────────────────────────────────
-const AssignSheet: React.FC<{
-  visible: boolean;
-  plans: SubscriptionPlan[];
-  busy: boolean;
-  onClose: () => void;
-  onAssign: (input: {
-    companyId: string;
-    planId: string;
-    startDate: string;
-    notes?: string;
-  }) => Promise<void>;
-}> = ({ visible, plans, busy, onClose, onAssign }) => {
-  const dispatch = useAppDispatch();
-  const companies = useAppSelector(selectCompanies);
-
-  const [companyId, setCompanyId] = useState('');
-  const [planId, setPlanId] = useState('');
-  const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    if (!visible) return;
-    setCompanyId('');
-    setPlanId('');
-    setNotes('');
-    // There is no company search endpoint, so this is the first page rather
-    // than a lookup -- enough for the correction-shaped work this is for.
-    if (companies.length === 0) dispatch(loadCompanies({ page: 1 }));
-  }, [visible, dispatch, companies.length]);
-
-  const ready = !!companyId && !!planId;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={S.sheetOverlay}>
-        <View style={S.sheet}>
-          <Text style={S.sheetTitle}>Assign a plan</Text>
-
-          <Text style={S.sheetLabel}>Company</Text>
-          <ScrollView style={S.picker} nestedScrollEnabled>
-            {companies.map(c => (
-              <TouchableOpacity
-                key={c.id}
-                onPress={() => setCompanyId(c.id)}
-                style={[S.pickRow, companyId === c.id && S.pickRowActive]}
-              >
-                <Text style={S.pickText} numberOfLines={1}>{c.name}</Text>
-                {companyId === c.id ? (
-                  <Feather name="check" size={16} color={colors.primary} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={S.sheetLabel}>Plan</Text>
-          <ScrollView style={S.picker} nestedScrollEnabled>
-            {plans.map(p => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => setPlanId(p.id)}
-                style={[S.pickRow, planId === p.id && S.pickRowActive]}
-              >
-                <Text style={S.pickText} numberOfLines={1}>{p.name}</Text>
-                {planId === p.id ? (
-                  <Feather name="check" size={16} color={colors.primary} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <TextInput
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Why this was assigned by hand (optional)"
-            placeholderTextColor={colors.textTertiary}
-            style={S.notesInput}
-            multiline
-          />
-
-          <View style={S.sheetActions}>
-            <TouchableOpacity onPress={onClose} style={S.sheetCancel}>
-              <Text style={S.sheetCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              disabled={!ready || busy}
-              style={[S.sheetSave, (!ready || busy) && S.sheetSaveDisabled]}
-              onPress={() =>
-                onAssign({
-                  companyId,
-                  planId,
-                  startDate: new Date().toISOString(),
-                  ...(notes.trim() ? { notes: notes.trim() } : {}),
-                })
-              }
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={colors.neutral0} />
-              ) : (
-                <Text style={S.sheetSaveText}>Assign</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 };
 
@@ -307,16 +169,6 @@ const S = StyleSheet.create({
   },
   noticeText: { ...typography.bodySm, color: colors.textSecondary, flex: 1 },
 
-  assignBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  assignBtnText: { ...typography.labelMd, color: colors.neutral0 },
 
   list: { gap: spacing.xs, paddingBottom: spacing.xl },
   row: {

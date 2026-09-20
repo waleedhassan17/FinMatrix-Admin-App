@@ -247,7 +247,7 @@ const SubscriptionPlansScreen: React.FC = () => {
 
       {tab === 'subscriptions' ? (
         <View style={S.panelWrap}>
-          <SubscriptionsPanel plans={plans} />
+          <SubscriptionsPanel />
         </View>
       ) : isLoading ? (
         <View style={S.centered}>
