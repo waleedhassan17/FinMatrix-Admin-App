@@ -1,10 +1,13 @@
 name: CI
 
-# The app had no CI at all, so a type error or a payload the API rejects only
-# showed up when someone ran a build by hand. The cost-method bug that made
-# every inventory create fail with a 400 was exactly this shape: a value the
-# app sent that the API had never accepted, with nothing checking the two
-# agreed.
+# A type error, or a payload the API rejects, should not wait for someone to
+# run a build by hand.
+#
+# The example that used to sit here was an inventory cost-method mismatch from
+# the tenant app -- a value the app sent that the API had never accepted, with
+# nothing checking the two agreed. The console's own version of that shape was
+# getCompanyDetail, typed as the list row rather than the detail payload: it
+# type-checked while promising two fields the endpoint does not send.
 on:
   push:
     branches: [main]
@@ -35,21 +38,40 @@ jobs:
       - name: Design tokens
         run: npm run check:tokens
 
-      # Informational for now: the codebase carries ~285 pre-existing lint
-      # errors and ~1125 warnings. Failing the build on them from day one
-      # would make this job noise that everyone learns to ignore. Burn the
+      # A real gate, scoped to one rule. rules-of-hooks is clean across all of
+      # src/ today, and it is the rule whose violations are actual runtime
+      # bugs rather than style -- a conditional hook corrupts state order.
+      # Scoping it this way means it gates NOW rather than waiting on the
+      # backlog below.
+      #
+      # exhaustive-deps is deliberately not here yet: five screens have stale
+      # Animated-ref deps, which are harmless in practice but would have to be
+      # resolved before the rule could be trusted to fail the build.
+      - name: Lint (hook rules)
+        run: >-
+          npx eslint --no-eslintrc
+          --parser @typescript-eslint/parser
+          --plugin react-hooks
+          --rule '{"react-hooks/rules-of-hooks":"error"}'
+          'src/**/*.tsx'
+
+      # Informational: the codebase carries 65 pre-existing lint errors and 272
+      # warnings, 41 of the errors in SplashScreen alone. Failing the build on
+      # them would make this job noise everyone learns to ignore. Burn the
       # backlog down, then drop continue-on-error and make it a real gate.
       - name: Lint (informational)
         run: npm run lint
         continue-on-error: true
 
-      # A real gate now: 11 suites covering the capability matrix, the staff
-      # route allow-list, the serializers, two redux slices and the cross-tab
-      # navigation invariant. --passWithNoTests is kept only so a checkout that
-      # legitimately has none does not fail here.
+      # A real gate: 10 suites / 96 tests, covering the serializers, the
+      # superAdmin slice, the company-review failure path, the password rule
+      # and the sign-in portal.
+      #
+      # --passWithNoTests is gone. There are suites now, so the flag can only
+      # hide a future misconfiguration that finds none.
       #
       # Note the type-check above DOES cover these: the "__tests__" entry in
       # tsconfig's exclude resolves to ./__tests__ at the repo root, not to the
       # nested src/**/__tests__ dirs, so a type error in a spec fails the build.
       - name: Unit tests
-        run: npx jest --passWithNoTests
+        run: npx jest
