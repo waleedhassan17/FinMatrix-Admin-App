@@ -16,6 +16,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   Image,
@@ -31,7 +32,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { THEME, statusStyle, HEADER_NAVY } from '../../../theme';
-import { AdminScreenHeader } from '../../../components/admin/AdminUI';
+import {
+  AdminScreenHeader,
+  AdminEmptyState,
+  AdminErrorState,
+} from '../../../components/admin/AdminUI';
 
 // Design-system tokens (see src/theme/theme.ts).
 const { colors, radius, shadows, spacing, typography } = THEME;
@@ -86,6 +91,9 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
 ];
 
+// Card-shaped rows, so a window of 20 is already a long scroll.
+const PAGE_SIZE = 20;
+
 const PaymentSubmissionsScreen: React.FC = () => {
   const [filter, setFilter] = useState<FilterKey>('submitted');
   const [kindFilter, setKindFilter] = useState<KindKey>('all');
@@ -93,6 +101,13 @@ const PaymentSubmissionsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  // This endpoint has NO server-side limit: it returns every row matching the
+  // filters. The submitted queue is bounded by the backlog, but `approved`
+  // grows forever -- every payment ever taken. The payload cannot be fixed
+  // from here, but mounting every card at once is the part that makes the
+  // screen crawl, so the list is windowed.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [shotOpen, setShotOpen] = useState(false);
   const [shotUri, setShotUri] = useState<string | null>(null);
@@ -112,8 +127,12 @@ const PaymentSubmissionsScreen: React.FC = () => {
         order: kindFilter === 'trials' ? 'asc' : 'desc',
       });
       setRows(data);
+      setError('');
+      setVisibleCount(PAGE_SIZE);
     } catch (e: any) {
-      notify('Could not load submissions', e?.message ?? 'Please try again.');
+      // Was a transient notify() only, so the screen then showed the empty
+      // state -- indistinguishable from a genuinely empty queue.
+      setError(e?.message ?? 'Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -230,9 +249,20 @@ const PaymentSubmissionsScreen: React.FC = () => {
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : (
-          <ScrollView
+          <FlatList
+            data={rows.slice(0, visibleCount)}
+            keyExtractor={(sub: PaymentSubmissionView) => sub.id}
             contentContainerStyle={S.scroll}
             showsVerticalScrollIndicator={false}
+            // Only what is near the viewport stays mounted. Before this the
+            // whole queue was in the tree at once.
+            initialNumToRender={10}
+            windowSize={5}
+            removeClippedSubviews
+            onEndReachedThreshold={0.4}
+            onEndReached={() =>
+              setVisibleCount((n) => Math.min(n + PAGE_SIZE, rows.length))
+            }
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -242,18 +272,44 @@ const PaymentSubmissionsScreen: React.FC = () => {
                 }}
               />
             }
-          >
-            {rows.length === 0 ? (
-              <View style={S.empty}>
-                <Feather name="inbox" size={40} color={colors.textDisabled} />
-                <Text style={S.emptyText}>
-                  No {filter === 'all' ? '' : filter}{' '}
-                  {kindFilter === 'trials' ? 'trial requests' : 'submissions'}
-                </Text>
-              </View>
-            ) : (
-              rows.map((sub) => (
-                <View key={sub.id} style={S.card}>
+            ListEmptyComponent={
+              error ? (
+                <AdminErrorState
+                  title="Could not load submissions"
+                  message={error}
+                  onRetry={() => {
+                    setLoading(true);
+                    load();
+                  }}
+                />
+              ) : (
+                <AdminEmptyState
+                  icon="inbox"
+                  title={`No ${filter === 'all' ? '' : filter} ${
+                    kindFilter === 'trials' ? 'trial requests' : 'submissions'
+                  }`.replace(/\s+/g, ' ')}
+                />
+              )
+            }
+            ListFooterComponent={
+              visibleCount < rows.length ? (
+                <TouchableOpacity
+                  style={S.loadMoreBtn}
+                  onPress={() =>
+                    setVisibleCount((n) => Math.min(n + PAGE_SIZE, rows.length))
+                  }
+                  accessibilityRole="button"
+                >
+                  <Text style={S.loadMoreText}>
+                    Load more ({rows.length - visibleCount} left)
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ height: 30 }} />
+              )
+            }
+            renderItem={({ item: sub }: { item: PaymentSubmissionView }) => (
+                <View style={S.card}>
                   <View style={S.cardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={S.company} numberOfLines={1}>
@@ -355,10 +411,8 @@ const PaymentSubmissionsScreen: React.FC = () => {
                     </View>
                   )}
                 </View>
-              ))
             )}
-            <View style={{ height: 30 }} />
-          </ScrollView>
+          />
         )}
       </View>
 
@@ -562,8 +616,6 @@ const S = StyleSheet.create({
   filterTextActive: { color: colors.neutral0 },
 
   scroll: { paddingHorizontal: spacing.sm, paddingTop: spacing.xxs },
-  empty: { alignItems: 'center', paddingTop: 60, gap: spacing.sm },
-  emptyText: { ...typography.bodySm, color: colors.textTertiary, textTransform: 'capitalize' },
 
   card: {
     backgroundColor: colors.neutral0, borderRadius: 14, padding: spacing.md, marginBottom: spacing.sm,
@@ -622,6 +674,11 @@ const S = StyleSheet.create({
     marginTop: spacing.sm, paddingVertical: spacing.xs,
   },
   blockLinkText: { ...typography.labelMd, color: colors.danger },
+  loadMoreBtn: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  loadMoreText: { ...typography.labelMd, color: colors.primary },
   modalHint: { ...typography.labelSm, color: colors.textTertiary, textAlign: 'center', marginTop: 4 },
 });
 
