@@ -26,7 +26,7 @@ const { colors, radius, shadows, spacing, typography } = THEME;
 import {
   WAREHOUSE_ONLY_BUILD,
   DEFAULT_COMPANY_TYPE,
-} from '../../../utils/featureGates';
+} from '../../../utils/planTiers';
 import { resolvePlanFeatures } from '../../../utils/planFeatures';
 import {
   loadPlans,

@@ -1,5 +1,11 @@
-// Each sign-in door names itself, so the server can refuse an account that
-// belongs on another one (WRONG_PORTAL) before issuing a token.
+// The console has exactly one door. It names itself as `admin` so the server
+// can refuse an account that belongs on another one (WRONG_PORTAL) before
+// issuing a token.
+//
+// Two of the three tests here used to exercise authDeliveryLogin -- the rider
+// and staff portal, which this app has no screen for and never called. They
+// went with that function: a suite that spends most of its assertions on code
+// the app cannot reach reads as coverage without being any.
 jest.mock('../../network/apiHelpers', () => ({
   api: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
   API_BASE_URL: 'http://test.local/api/v1',
@@ -11,7 +17,7 @@ jest.mock('../../network/apiHelpers', () => ({
 }));
 
 import { api } from '../../network/apiHelpers';
-import { authDeliveryLogin, authLogin } from '../authNetwork';
+import { authLogin } from '../authNetwork';
 
 const post = api.post as jest.Mock;
 
@@ -42,24 +48,22 @@ describe('sign-in portals', () => {
     });
   });
 
-  it('the User Portal signs in as the team door (staff and riders)', async () => {
-    post.mockResolvedValueOnce(ok('staff'));
-    await authDeliveryLogin({ signInInfo: { username: 'verify.staff', password: 'pw' } });
-    expect(post).toHaveBeenCalledWith('/auth/signin', {
-      identifier: 'verify.staff',
-      email: 'verify.staff',
-      password: 'pw',
-      portal: 'team',
-    });
+  it('signs a super admin in through the same admin door', async () => {
+    // PORTAL_ROLES maps 'admin' to ['admin', 'super_admin'] -- the platform
+    // operator and the company owner share a door, and the console branches
+    // on role after the token comes back.
+    post.mockResolvedValueOnce(ok('super_admin'));
+    await authLogin({ signInInfo: { email: 'ops@finmatrix.pk', password: 'pw' } });
+    expect(post.mock.calls[0][1].portal).toBe('admin');
   });
 
-  it('surfaces the server’s wrong-door message on the User Portal', async () => {
-    const serverError = { response: { status: 403, data: { error: { code: 'WRONG_PORTAL', message: 'This is a business owner account.' } } } };
+  it('surfaces the server’s wrong-door message', async () => {
+    const serverError = { response: { status: 403, data: { error: { code: 'WRONG_PORTAL', message: 'This is a rider account.' } } } };
     post.mockRejectedValueOnce(serverError);
     const { extractErrorMessage } = jest.requireMock('../../network/apiHelpers');
-    (extractErrorMessage as jest.Mock).mockReturnValueOnce('This is a business owner account.');
+    (extractErrorMessage as jest.Mock).mockReturnValueOnce('This is a rider account.');
     await expect(
-      authDeliveryLogin({ signInInfo: { username: 'owner@x.z', password: 'pw' } }),
-    ).rejects.toThrow('This is a business owner account.');
+      authLogin({ signInInfo: { email: 'rider@x.z', password: 'pw' } }),
+    ).rejects.toThrow('This is a rider account.');
   });
 });

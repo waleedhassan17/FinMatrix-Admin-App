@@ -1,7 +1,7 @@
 import type { PayloadAction } from '@reduxjs/toolkit';
 import { createAppSlice } from '@store/createAppSlice';
-import { authLogin, authDeliveryLogin, AuthError } from '@networks/auth/authNetwork';
-import type { SignInPayload, DeliverySignInPayload } from '@networks/auth/authNetwork';
+import { authLogin, AuthError } from '@networks/auth/authNetwork';
+import type { SignInPayload } from '@networks/auth/authNetwork';
 import type { User } from '@/types';
 
 export interface SignInSliceState {
@@ -86,27 +86,6 @@ export const signInSlice = createAppSlice({
       },
     ),
 
-    submitDeliverySignInAsync: create.asyncThunk(
-      async ({ username, password }: { username: string; password: string }) => {
-        const payload: DeliverySignInPayload = { username, password };
-        const result = await authDeliveryLogin({ signInInfo: payload });
-        return result?.data;
-      },
-      {
-        pending: state => {
-          state.status = 'loading';
-          state.error = '';
-        },
-        fulfilled: (state, _action) => {
-          state.status = 'idle';
-          state.error = '';
-        },
-        rejected: (state, action) => {
-          state.status = 'failed';
-          state.error = action.error.message ?? 'Sign in failed';
-        },
-      },
-    ),
   }),
 
   selectors: {
@@ -125,7 +104,6 @@ export const {
   clearSignInError,
   resetSignInForm,
   submitSignInAsync,
-  submitDeliverySignInAsync,
 } = signInSlice.actions;
 
 export const {

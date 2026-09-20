@@ -21,7 +21,6 @@ import { realtimeMiddleware } from './realtimeMiddleware';
 
 // ── Per-screen slices ──
 import { signInSlice } from '../screens/Auth/SignIn/signInSlice';
-import { forgotPasswordSlice } from '../screens/Auth/ForgotPassword/forgotPasswordSlice';
 import { superAdminSlice } from '../screens/SuperAdmin/superAdminSlice';
 
 // The tenant app registers ~114 reducers here, one per screen. Because
@@ -39,7 +38,6 @@ const rootReducer = combineReducers({
   auth: authReducer,
   appContainer: appContainerSlice.reducer,
   signIn: signInSlice.reducer,
-  forgotPassword: forgotPasswordSlice.reducer,
   superAdmin: superAdminSlice.reducer,
 });
 

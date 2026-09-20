@@ -37,7 +37,6 @@ import {
 } from '../../screens/Auth/authSlice';
 import { setSessionExpiredHandler } from '../../utils/authEvents';
 import { resetSignInForm } from '../../screens/Auth/SignIn/signInSlice';
-import { resetForgotPasswordForm } from '../../screens/Auth/ForgotPassword/forgotPasswordSlice';
 import { THEME } from '../../theme';
 
 // Design-system tokens (see src/theme/theme.ts).
@@ -99,11 +98,14 @@ export const AppContainer: React.FC = () => {
     return () => setSessionExpiredHandler(null);
   }, [dispatch]);
 
-  // ─── Clear auth form slices when user becomes authenticated ──
+  // ─── Clear the sign-in form once the user is authenticated ──
+  // forgotPassword's reset was dispatched here too, against a slice whose own
+  // screen never wrote to it -- ForgotPasswordScreen keeps its state locally.
+  // Resetting state nothing populates is not a no-op you notice; it is one
+  // that keeps a dead slice looking alive.
   useEffect(() => {
     if (isAuthenticated && user) {
       dispatch(resetSignInForm());
-      dispatch(resetForgotPasswordForm());
     }
   }, [isAuthenticated, user, dispatch]);
 

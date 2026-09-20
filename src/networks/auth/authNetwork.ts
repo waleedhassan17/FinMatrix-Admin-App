@@ -14,33 +14,14 @@ export interface SignInPayload {
   password: string;
 }
 
-export interface RegisterPayload {
-  fullName: string;
-  email: string;
-  phone: string;
-  password: string;
-}
 
 export interface ForgotPasswordPayload {
   email: string;
 }
 
-export interface DeliverySignInPayload {
-  username: string;
-  password: string;
-}
 
-export interface VerifyEmailPayload {
-  email: string;
-}
 
-export interface ResendVerificationPayload {
-  email: string;
-}
 
-export interface CheckVerificationPayload {
-  email: string;
-}
 
 // Backend→app user mapping lives in serializers/authSerializer.ts.
 const mapUser = userResponseSerializer;
@@ -148,75 +129,9 @@ export const authLogin = async ({
 // SERVER decides the role from the account, so the tab the user picked on the
 // sign-in screen sets expectations but never authority.
 
-export const authDeliveryLogin = async ({
-  signInInfo,
-}: {
-  signInInfo: DeliverySignInPayload;
-}) => {
-  try {
-    const identifier = signInInfo.username.trim();
-    const response = await api.post('/auth/signin', {
-      identifier,
-      email: identifier,
-      password: signInInfo.password,
-      // The User Portal admits staff and riders; an owner's email typed in here
-      // is refused with WRONG_PORTAL and pointed at the Business Portal.
-      portal: 'team',
-    });
-    const responseData = response.data?.data ?? response.data;
-    const { user: backendUser, tokens, companyId, companyStatus, companyType, features, subscription } =
-      responseData;
-    if (!tokens?.accessToken) {
-      throw new Error('Login succeeded but no token received. Please try again.');
-    }
-    await setTokens(tokens.accessToken, tokens.refreshToken);
-    // A new session starts: its 401s are real and must be handled.
-    clearIntentionalSignOut();
-    if (companyId) {
-      await setStoredCompanyId(companyId);
-    }
-    // Staff need companyStatus/companyType/features exactly as an owner does —
-    // they mount a company navigator and their tier gates the same rows. The
-    // rider path never used them, which is why they were dropped here.
-    const user = mapUser(backendUser, companyStatus, { companyType, features, subscription });
-    return { data: user };
-  } catch (e: any) {
-    console.warn('[authDeliveryLogin] error:', e?.response?.status, e?.response?.data ?? e?.message);
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Register ─────────────────────────────────────────
 
-export const authRegister = async ({
-  registerInfo,
-}: {
-  registerInfo: RegisterPayload;
-}) => {
-  try {
-    const response = await api.post('/auth/signup', {
-      email: registerInfo.email.trim(),
-      password: registerInfo.password,
-      displayName: registerInfo.fullName.trim(),
-      // Canonical +92XXXXXXXXXX, or omitted entirely when blank — posting ''
-      // would fail the server's optional-phone check (@IsOptional only skips
-      // undefined/null).
-      phone: normalizePkPhone(registerInfo.phone),
-      role: 'admin',
-    });
-    const { user: backendUser, tokens, companyId, companyStatus, companyType, features, subscription } = response.data.data;
-    await setTokens(tokens.accessToken, tokens.refreshToken);
-    // A new session starts: its 401s are real and must be handled.
-    clearIntentionalSignOut();
-    if (companyId) {
-      await setStoredCompanyId(companyId);
-    }
-    const user = mapUser(backendUser, companyStatus, { companyType, features, subscription });
-    return { data: user };
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Get Current User (Me) ───────────────────────────
 
@@ -313,168 +228,23 @@ export const authResetPassword = async (
 // ─── Verify Email (deep-link token) ──────────────────
 // Accepts a raw token string (deep link) or the legacy { verifyEmailInfo }
 // object shape still used by emailVerificationSlice.
-export const authVerifyEmail = async (
-  arg: string | { verifyEmailInfo: VerifyEmailPayload },
-) => {
-  const token = typeof arg === 'string' ? arg : '';
-  try {
-    const response = await api.post('/auth/verify-email', { token });
-    const data = response.data?.data ?? response.data;
-    return { data };
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Resend Verification ──────────────────────────────
 
-export const authResendVerification = async ({
-  resendInfo,
-}: {
-  resendInfo: ResendVerificationPayload;
-}) => {
-  try {
-    const response = await api.post('/auth/resend-verification', {
-      email: resendInfo.email.trim(),
-    });
-    return { data: response.data };
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Check Verification Status (via /auth/me) ────────
 
-export const authCheckVerificationStatus = async (_args?: unknown) => {
-  try {
-    const response = await api.get('/auth/me');
-    const data = response.data?.data ?? response.data;
-    return { data: { verified: Boolean(data?.user?.isEmailVerified) } };
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Company APIs ─────────────────────────────────────
 
-export interface CreateCompanyData {
-  name: string;
-  industry?: string;
-  /** Three-tier model: small_business | large_org | warehouse. */
-  companyType?: string;
-  legalStructure?: string;
-  // Accepts a structured address (preferred) or a legacy concatenated string.
-  address?:
-    | string
-    | {
-        street?: string;
-        city?: string;
-        state?: string;
-        postalCode?: string;
-        country?: string;
-      };
-  phone?: string;
-  email?: string;
-  website?: string;
-  taxId?: string;
-  fiscalYearStartMonth?: number;
-  // accountingMethod removed: reports are accrual-basis only and the server
-  // now sets the field itself. Nothing here ever sent it.
-  homeCurrency?: string;
-  logo?: string;
-}
 
-export const createCompanyAPI = async (data: CreateCompanyData) => {
-  try {
-    const response = await api.post('/companies', data);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
 // ─── Submit company onboarding for platform-admin approval (Step C) ──────────
 
-export const submitCompanyAPI = async (companyId: string) => {
-  try {
-    const response = await api.post(`/companies/${companyId}/submit`);
-    return response.data?.data ?? response.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const joinCompanyAPI = async (inviteCode: string) => {
-  try {
-    const response = await api.post('/companies/join', { inviteCode });
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const getCompanyAPI = async (companyId: string) => {
-  try {
-    const response = await api.get(`/companies/${companyId}`);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const updateCompanyAPI = async (companyId: string, data: any) => {
-  try {
-    const response = await api.patch(`/companies/${companyId}`, data);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const getCompanyMembersAPI = async (companyId: string) => {
-  try {
-    const response = await api.get(`/companies/${companyId}/members`);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const removeCompanyMemberAPI = async (companyId: string, userId: string) => {
-  try {
-    const response = await api.delete(`/companies/${companyId}/members/${userId}`);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const regenerateInviteCodeAPI = async (companyId: string) => {
-  try {
-    const response = await api.post(`/companies/${companyId}/regenerate-code`);
-    return response.data.data;
-  } catch (e: any) {
-    throw new Error(extractErrorMessage(e));
-  }
-};
 
-export const registerAdminCreatedPersonnel = async (info: any): Promise<any> => {
-  try {
-    const response = await api.post('/delivery-personnel', {
-      email: info.email,
-      username: info.username,
-      password: info.password,
-      name: info.user?.displayName ?? info.email?.split('@')[0],
-      phone: info.user?.phoneNumber ?? '',
-      companyId: info.user?.companyId,
-      vehicleType: info.vehicleType ?? 'motorcycle',
-      vehicleNumber: info.vehicleNumber ?? '',
-      zones: info.zones ?? [],
-      maxLoad: info.maxLoad ?? 10,
-    });
-    return response.data;
-  } catch (e: any) {
-    console.warn('[registerAdminCreatedPersonnel] error:', e?.response?.status, e?.response?.data ?? e?.message);
-    throw new Error(extractErrorMessage(e));
-  }
-};
