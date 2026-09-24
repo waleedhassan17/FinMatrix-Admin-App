@@ -59,6 +59,8 @@ export interface SuperAdminState {
   companiesFilter: string;
   /** undefined = no ?isTrial param at all, which the server reads as "any". */
   companiesTrial: boolean | undefined;
+  /** What the Companies search box holds; '' means no search. */
+  companiesSearch: string;
   companiesError: string;
 
   plans: SubscriptionPlan[];
@@ -108,6 +110,7 @@ const initialState: SuperAdminState = {
   companiesStatus: 'idle',
   companiesFilter: 'all',
   companiesTrial: undefined,
+  companiesSearch: '',
   companiesError: '',
 
   plans: [],
@@ -140,6 +143,11 @@ export const superAdminSlice = createAppSlice({
       },
     ),
 
+    setCompaniesSearch: create.reducer((state, action: PayloadAction<string>) => {
+      state.companiesSearch = action.payload;
+      state.companiesPage = 1;
+    }),
+
     setCompaniesTrial: create.reducer(
       (state, action: PayloadAction<boolean | undefined>) => {
         state.companiesTrial = action.payload;
@@ -171,7 +179,7 @@ export const superAdminSlice = createAppSlice({
 
     loadCompanies: create.asyncThunk(
       async (
-        args: { page?: number; filter?: string; isTrial?: boolean } | undefined,
+        args: { page?: number; filter?: string; isTrial?: boolean; search?: string } | undefined,
         { getState },
       ) => {
         const state = (getState() as { superAdmin: SuperAdminState }).superAdmin;
@@ -179,11 +187,13 @@ export const superAdminSlice = createAppSlice({
         const filter = args?.filter ?? state.companiesFilter;
         const isTrial =
           args && 'isTrial' in args ? args.isTrial : state.companiesTrial;
+        const search = args?.search ?? state.companiesSearch;
         const res = await getAllCompaniesAPI(
           page,
           20,
           filter === 'all' ? undefined : filter,
           isTrial,
+          search,
         );
         return { ...companyListResponseSerializer(res), page };
       },
@@ -400,6 +410,7 @@ export const superAdminSlice = createAppSlice({
     selectCompaniesStatus: s => s.companiesStatus,
     selectCompaniesFilter: s => s.companiesFilter,
     selectCompaniesTrial: s => s.companiesTrial,
+    selectCompaniesSearch: s => s.companiesSearch,
     selectCompaniesError: s => s.companiesError,
     selectPlans: s => s.plans,
     selectPlansStatus: s => s.plansStatus,
@@ -421,6 +432,7 @@ export const superAdminSlice = createAppSlice({
 export const {
   setCompaniesFilter,
   setCompaniesTrial,
+  setCompaniesSearch,
   loadPlatformStats,
   loadCompanies,
   updateCompanyStatusLocal,
@@ -443,6 +455,7 @@ export const {
   selectCompaniesStatus,
   selectCompaniesFilter,
   selectCompaniesTrial,
+  selectCompaniesSearch,
   selectCompaniesError,
   selectPlans,
   selectPlansStatus,

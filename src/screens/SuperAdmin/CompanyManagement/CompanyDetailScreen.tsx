@@ -30,6 +30,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Alert } from '../../../utils/alert';
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
+import { BILLING_DISABLED_BUILD } from '../../../utils/featureFlags';
+import { companyStage, companyStatusLabel } from '../../../utils/companyStatus';
 import {
   AdminScreenHeader,
   AdminErrorState,
@@ -276,15 +278,20 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   // The server accepts 'suspended' but stores 'inactive'; both read as
-  // inactive here so the badge and the available actions agree.
-  const norm =
-    !company || company.status === 'approved' || company.status === 'active' || !company.status
-      ? 'active'
-      : company.status === 'suspended' || company.status === 'inactive'
-        ? 'inactive'
-        : company.status === 'rejected'
-          ? 'rejected'
-          : 'pending';
+  // inactive here so the badge and the available actions agree. A company
+  // that was never submitted is 'pending': it needs the same decision.
+  const norm = companyStage(company?.status);
+
+  // Every status change is confirmed first. These used to fire on the tap, so
+  // a stray touch on "Suspend" locked a whole company out.
+  const confirmThen = useCallback(
+    (title: string, message: string, confirmLabel: string, run: () => void, destructive = false) =>
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: confirmLabel, style: destructive ? 'destructive' : 'default', onPress: run },
+      ]),
+    [],
+  );
 
   const isLoading = status === 'loading' && !company;
 
@@ -319,8 +326,8 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           }
         >
           <View style={S.statusRow}>
-            <StatusPill status={norm} />
-            {company.isTrial ? (
+            <StatusPill status={norm} label={companyStatusLabel(company.status)} />
+            {!BILLING_DISABLED_BUILD && company.isTrial ? (
               <View style={[S.trialPill, { backgroundColor: statusStyle('pending').bg }]}>
                 <Text style={[S.trialPillText, { color: statusStyle('pending').fg }]}>
                   {company.trialConvertedAt ? 'Converted from trial' : 'On free trial'}
@@ -336,16 +343,40 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           ) : null}
 
+          {/* The person the decision is about, and how to reach them. */}
+          <View style={S.card}>
+            <Text style={S.cardTitle}>Owner</Text>
+            {company.owner ? (
+              <>
+                <Row label="Name" value={company.owner.displayName ?? '—'} emphasis />
+                <Row label="Email" value={company.owner.email ?? '—'} />
+                <Row label="Phone" value={company.owner.phone ?? '—'} />
+                <Row
+                  label="Email confirmed"
+                  value={company.owner.isEmailVerified ? 'Yes' : 'Not yet'}
+                />
+              </>
+            ) : (
+              <Text style={S.muted}>The owner&rsquo;s details are not available.</Text>
+            )}
+          </View>
+
           <View style={S.card}>
             <Text style={S.cardTitle}>Account</Text>
-            <Row label="Email" value={company.email ?? '—'} />
-            <Row label="Phone" value={company.phone ?? '—'} />
+            <Row label="Company email" value={company.email ?? '—'} />
+            <Row label="Company phone" value={company.phone ?? '—'} />
             <Row label="Type" value={company.companyType ?? 'Unset'} />
-            <Row label="Plan" value={company.subscriptionPlan ?? 'No plan'} emphasis />
-            <Row label="Subscription" value={company.subscriptionStatus ?? '—'} />
-            <Row label="Expires" value={fmtDate(company.subscriptionExpiryDate)} />
+            {/* BILLING-DISABLED BUILD: nothing is sold, so these could only
+                ever read "No plan" and "—". */}
+            {!BILLING_DISABLED_BUILD && (
+              <>
+                <Row label="Plan" value={company.subscriptionPlan ?? 'No plan'} emphasis />
+                <Row label="Subscription" value={company.subscriptionStatus ?? '—'} />
+                <Row label="Expires" value={fmtDate(company.subscriptionExpiryDate)} />
+              </>
+            )}
             <Row label="Registered" value={fmtDate(company.createdAt)} />
-            {company.trialStartedAt ? (
+            {!BILLING_DISABLED_BUILD && company.trialStartedAt ? (
               <Row label="Trial started" value={fmtDate(company.trialStartedAt)} />
             ) : null}
             <Row label="Inventory" value={company.inventoryEnabled ? 'Enabled' : 'Disabled'} />
@@ -386,24 +417,26 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             )}
           </View>
 
-          <View style={S.card}>
-            <Text style={S.cardTitle}>Subscription history</Text>
-            {company.subscriptions.length === 0 ? (
-              <Text style={S.muted}>No subscription has been assigned.</Text>
-            ) : (
-              company.subscriptions.map(sub => (
-                <View key={sub.id} style={S.memberRow}>
-                  <View style={S.memberInfo}>
-                    <Text style={S.memberName}>{sub.plan?.name ?? sub.planId}</Text>
-                    <Text style={S.memberMeta}>
-                      {fmtDate(sub.startDate)} — {fmtDate(sub.endDate)}
-                    </Text>
+          {!BILLING_DISABLED_BUILD && (
+            <View style={S.card}>
+              <Text style={S.cardTitle}>Subscription history</Text>
+              {company.subscriptions.length === 0 ? (
+                <Text style={S.muted}>No subscription has been assigned.</Text>
+              ) : (
+                company.subscriptions.map(sub => (
+                  <View key={sub.id} style={S.memberRow}>
+                    <View style={S.memberInfo}>
+                      <Text style={S.memberName}>{sub.plan?.name ?? sub.planId}</Text>
+                      <Text style={S.memberMeta}>
+                        {fmtDate(sub.startDate)} — {fmtDate(sub.endDate)}
+                      </Text>
+                    </View>
+                    <StatusPill status={sub.status} />
                   </View>
-                  <StatusPill status={sub.status} />
-                </View>
-              ))
-            )}
-          </View>
+                ))
+              )}
+            </View>
+          )}
 
           <View style={S.actions}>
             {norm === 'pending' ? (
@@ -421,7 +454,14 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 <TouchableOpacity
                   style={[S.actionBtn, S.actionPrimary]}
                   disabled={actionStatus === 'loading'}
-                  onPress={() => decide('active', 'Approved', `${company.name} has been approved.`)}
+                  onPress={() =>
+                    confirmThen(
+                      `Approve ${company.name}?`,
+                      'The owner can sign in and start using FinMatrix straight away, and we email them to say so.',
+                      'Approve',
+                      () => decide('active', 'Approved', `${company.name} has been approved. The owner has been emailed.`),
+                    )
+                  }
                 >
                   <Text style={S.actionPrimaryText}>Approve</Text>
                 </TouchableOpacity>
@@ -431,18 +471,45 @@ const CompanyDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 style={[S.actionBtn, S.actionDanger]}
                 disabled={actionStatus === 'loading'}
                 onPress={() =>
-                  decide('inactive', 'Suspended', `${company.name} is blocked from signing in.`)
+                  confirmThen(
+                    `Deactivate ${company.name}?`,
+                    'The owner and their team lose access at once and cannot sign in until you activate the company again. Nothing is deleted. We email the owner.',
+                    'Deactivate',
+                    () =>
+                      decide(
+                        'inactive',
+                        'Deactivated',
+                        `${company.name} can no longer sign in. The owner has been emailed.`,
+                      ),
+                    true,
+                  )
                 }
               >
-                <Text style={S.actionDangerText}>Suspend</Text>
+                <Text style={S.actionDangerText}>Deactivate</Text>
               </TouchableOpacity>
             ) : (
+              // Deactivated → Activate; rejected → Approve (a rejection can be
+              // reconsidered without the owner registering again).
               <TouchableOpacity
                 style={[S.actionBtn, S.actionPrimary]}
                 disabled={actionStatus === 'loading'}
-                onPress={() => decide('active', 'Reactivated', `${company.name} is active again.`)}
+                onPress={() =>
+                  norm === 'rejected'
+                    ? confirmThen(
+                        `Approve ${company.name}?`,
+                        'The owner can sign in and start using FinMatrix straight away, and we email them to say so.',
+                        'Approve',
+                        () => decide('active', 'Approved', `${company.name} has been approved. The owner has been emailed.`),
+                      )
+                    : confirmThen(
+                        `Activate ${company.name}?`,
+                        'The owner and their team can sign in again straight away, with all their data as they left it. We email the owner.',
+                        'Activate',
+                        () => decide('active', 'Activated', `${company.name} is active again. The owner has been emailed.`),
+                      )
+                }
               >
-                <Text style={S.actionPrimaryText}>Reactivate</Text>
+                <Text style={S.actionPrimaryText}>{norm === 'rejected' ? 'Approve' : 'Activate'}</Text>
               </TouchableOpacity>
             )}
           </View>

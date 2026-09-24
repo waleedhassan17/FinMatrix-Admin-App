@@ -28,6 +28,8 @@ import type { CompaniesStackParamList } from '../../../navigators/CompaniesStack
 
 import { useAppDispatch, useAppSelector } from '../../../hooks/useReduxHooks';
 import { THEME, statusStyle } from '../../../theme';
+import { BILLING_DISABLED_BUILD } from '../../../utils/featureFlags';
+import { companyStage, companyStatusLabel } from '../../../utils/companyStatus';
 import {
   AdminScreenHeader,
   AdminEmptyState,
@@ -43,23 +45,30 @@ import {
   updateCompanyStatusLocal,
   setCompaniesFilter,
   setCompaniesTrial,
+  setCompaniesSearch,
   selectCompanies,
   selectCompaniesTotal,
   selectCompaniesStatus,
   selectCompaniesFilter,
   selectCompaniesTrial,
+  selectCompaniesSearch,
   selectCompaniesError,
   selectPlatformStats,
   type CompanyListItem,
 } from '../superAdminSlice';
 
+// Labelled for the decision, not the database value — the same words as the
+// admin web console.
 const FILTERS = [
   { label: 'All', value: 'all' },
-  { label: 'Pending', value: 'pending' },
+  { label: 'Awaiting approval', value: 'pending' },
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+  { label: 'Deactivated', value: 'inactive' },
   { label: 'Rejected', value: 'rejected' },
 ];
+
+/** Long enough that typing a name is one request, not one per letter. */
+const SEARCH_DEBOUNCE_MS = 350;
 
 // The server takes ?isTrial=true|false and ignores anything else; `all` means
 // send no param, matching how the status filter treats 'all'.
@@ -112,14 +121,8 @@ const ReviewModal: React.FC<{
 
   const cfg = statusStyle(company.status);
   // Normalize status onto the canonical model to pick the available actions.
-  const norm =
-    company.status === 'approved' || company.status === 'active' || !company.status
-      ? 'active'
-      : company.status === 'suspended' || company.status === 'inactive'
-        ? 'inactive'
-        : company.status === 'rejected'
-          ? 'rejected'
-          : 'pending';
+  // A never-submitted company is 'pending' here: it needs the same decision.
+  const norm = companyStage(company.status);
 
   const handleSubmit = async () => {
     if (action === 'reject' && !reason.trim()) {
@@ -157,7 +160,9 @@ const ReviewModal: React.FC<{
               <Text style={S.modalIndustry}>{company.industry ?? 'General'}</Text>
             </View>
             <View style={[S.modalStatusBadge, { backgroundColor: cfg.bg }]}>
-              <Text style={[S.modalStatusText, { color: cfg.fg }]}>{company.status}</Text>
+              <Text style={[S.modalStatusText, { color: cfg.fg }]}>
+                {companyStatusLabel(company.status)}
+              </Text>
             </View>
           </LinearGradient>
 
@@ -178,10 +183,22 @@ const ReviewModal: React.FC<{
 
           {tab === 'info' ? (
             <ScrollView style={S.modalContent} showsVerticalScrollIndicator={false}>
-              <InfoRow icon="mail" label="Email" value={company.email ?? 'N/A'} />
-              <InfoRow icon="phone" label="Phone" value={company.phone ?? 'N/A'} />
-              <InfoRow icon="users" label="Members" value={String(company.memberCount)} />
-              <InfoRow icon="credit-card" label="Current Plan" value={company.planName ?? 'No Plan'} />
+              {/* The owner first: they are who an administrator calls. */}
+              <InfoRow icon="user" label="Owner" value={company.ownerName ?? 'N/A'} />
+              <InfoRow
+                icon="mail"
+                label="Owner email"
+                value={company.ownerEmail ?? company.email ?? 'N/A'}
+              />
+              <InfoRow
+                icon="phone"
+                label="Phone"
+                value={company.ownerPhone ?? company.phone ?? 'N/A'}
+              />
+              <InfoRow icon="users" label="Team" value={String(company.memberCount)} />
+              {!BILLING_DISABLED_BUILD && (
+                <InfoRow icon="credit-card" label="Current Plan" value={company.planName ?? 'No Plan'} />
+              )}
               <InfoRow
                 icon="calendar"
                 label="Registered"
@@ -245,7 +262,7 @@ const ReviewModal: React.FC<{
                   </View>
                   <View style={S.actionOptionInfo}>
                     <Text style={S.actionOptionTitle}>Deactivate Company</Text>
-                    <Text style={S.actionOptionDesc}>Revoke access; users are blocked at login</Text>
+                    <Text style={S.actionOptionDesc}>Pause access at once; nothing is deleted</Text>
                   </View>
                   {action === 'deactivate' && <Feather name="check" size={18} color={THEME.colors.secondary} />}
                 </TouchableOpacity>
@@ -261,8 +278,8 @@ const ReviewModal: React.FC<{
                     <Feather name="play-circle" size={20} color={THEME.colors.success} />
                   </View>
                   <View style={S.actionOptionInfo}>
-                    <Text style={S.actionOptionTitle}>Reactivate Company</Text>
-                    <Text style={S.actionOptionDesc}>Restore access; users can log in again</Text>
+                    <Text style={S.actionOptionTitle}>Activate Company</Text>
+                    <Text style={S.actionOptionDesc}>Restore access; the owner and team can sign in again</Text>
                   </View>
                   {action === 'reactivate' && <Feather name="check" size={18} color={THEME.colors.secondary} />}
                 </TouchableOpacity>
@@ -319,7 +336,7 @@ const ReviewModal: React.FC<{
                         ? 'Reject'
                         : action === 'deactivate'
                           ? 'Deactivate'
-                          : 'Reactivate'}
+                          : 'Activate'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -359,15 +376,17 @@ const CompanyCard: React.FC<{
       </View>
       <View style={S.companyInfo}>
         <Text style={S.companyName} numberOfLines={1}>{company.name}</Text>
-        <Text style={S.companyMeta}>
-          {company.industry ?? 'General'} · {company.memberCount} member{company.memberCount !== 1 ? 's' : ''}
+        {/* Who to call about it. */}
+        <Text style={S.companyMeta} numberOfLines={1}>
+          {[company.ownerName, company.ownerEmail ?? company.email].filter(Boolean).join(' · ') ||
+            (company.industry ?? 'General')}
         </Text>
-        {company.planName && (
+        {!BILLING_DISABLED_BUILD && company.planName && (
           <Text style={S.companyPlan}>{company.planName}</Text>
         )}
         {/* The server has always sent isTrial; nothing rendered it, so a trial
             company looked the same as a paying one. */}
-        {company.isTrial && (
+        {!BILLING_DISABLED_BUILD && company.isTrial && (
           <Text style={S.companyTrial}>
             {company.trialConvertedAt ? 'Converted from trial' : 'On free trial'}
           </Text>
@@ -375,7 +394,9 @@ const CompanyCard: React.FC<{
       </View>
       <View style={S.companyRight}>
         <View style={[S.statusBadge, { backgroundColor: cfg.bg, borderColor: cfg.fg }]}>
-          <Text style={[S.statusText, { color: cfg.fg }]}>{company.status}</Text>
+          <Text style={[S.statusText, { color: cfg.fg }]}>
+            {companyStatusLabel(company.status)}
+          </Text>
         </View>
         <TouchableOpacity
           onPress={onReview}
@@ -405,7 +426,22 @@ const CompanyManagementScreen: React.FC = () => {
   const status = useAppSelector(selectCompaniesStatus);
   const filter = useAppSelector(selectCompaniesFilter);
   const trial = useAppSelector(selectCompaniesTrial);
+  const search = useAppSelector(selectCompaniesSearch);
   const error = useAppSelector(selectCompaniesError);
+
+  // The field updates on every keystroke; the request follows once typing
+  // pauses. The store keeps the committed search, so paging and refresh stay
+  // within it.
+  const [text, setText] = useState(search);
+  useEffect(() => {
+    const next = text.trim();
+    if (next === search) return;
+    const t = setTimeout(() => {
+      dispatch(setCompaniesSearch(next));
+      dispatch(loadCompanies({ page: 1, search: next }));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [text, search, dispatch]);
   const stats = useAppSelector(selectPlatformStats);
 
   // The chips declared a count badge and rendered it, but nothing ever passed
@@ -513,14 +549,18 @@ const CompanyManagementScreen: React.FC = () => {
       decide(
         'inactive',
         'Deactivated',
-        `${selectedCompany?.name} has been deactivated. Its users are now blocked.`,
+        `${selectedCompany?.name} has been deactivated. Its team can no longer sign in, and the owner has been emailed.`,
       ),
     [decide, selectedCompany],
   );
 
   const handleReactivate = useCallback(
     () =>
-      decide('active', 'Reactivated', `${selectedCompany?.name} is active again.`),
+      decide(
+        'active',
+        'Activated',
+        `${selectedCompany?.name} is active again. The owner has been emailed.`,
+      ),
     [decide, selectedCompany],
   );
 
@@ -553,7 +593,7 @@ const CompanyManagementScreen: React.FC = () => {
       {/* Header */}
       <AdminScreenHeader
         title="Companies"
-        subtitle={`${total} total registered`}
+        subtitle={`${total} ${search || filter !== 'all' ? 'matching' : 'total registered'}`}
         // No back arrow: this is a bottom-tab root, so goBack() had nothing
         // to pop and the button was a no-op that still looked pressable.
         right={
@@ -566,6 +606,32 @@ const CompanyManagementScreen: React.FC = () => {
           </TouchableOpacity>
         }
       />
+
+      {/* Search: by company, owner or email. */}
+      <View style={S.searchWrap}>
+        <Feather name="search" size={16} color={colors.textTertiary} />
+        <TextInput
+          style={S.searchInput}
+          value={text}
+          onChangeText={setText}
+          placeholder="Search company, owner or email"
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Search companies"
+        />
+        {text.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setText('')}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
+            <Feather name="x" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Filter Chips */}
       <View style={S.filtersRow}>
@@ -580,17 +646,21 @@ const CompanyManagementScreen: React.FC = () => {
             />
           ))}
         </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.filtersContent}>
-          <Text style={S.filterGroupLabel}>Trial</Text>
-          {TRIAL_FILTERS.map(f => (
-            <FilterChip
-              key={String(f.value)}
-              label={f.label}
-              active={trial === f.value}
-              onPress={() => onTrialChange(f.value)}
-            />
-          ))}
-        </ScrollView>
+        {/* BILLING-DISABLED BUILD: nothing is sold, so trial history is not a
+            way anyone looks for a company. */}
+        {!BILLING_DISABLED_BUILD && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.filtersContent}>
+            <Text style={S.filterGroupLabel}>Trial</Text>
+            {TRIAL_FILTERS.map(f => (
+              <FilterChip
+                key={String(f.value)}
+                label={f.label}
+                active={trial === f.value}
+                onPress={() => onTrialChange(f.value)}
+              />
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {isLoading ? (
@@ -639,7 +709,11 @@ const CompanyManagementScreen: React.FC = () => {
             <AdminEmptyState
               icon="briefcase"
               title="No companies found"
-              message="Nothing matches this filter yet."
+              message={
+                search
+                  ? `No company matches “${search}”.`
+                  : 'Nothing matches this filter yet.'
+              }
             />
           }
           ListFooterComponent={
@@ -668,6 +742,25 @@ const S = StyleSheet.create({
   backBtn: { padding: spacing.xxs },
   refreshBtn: { padding: 6 },
 
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  searchInput: {
+    ...typography.bodyMd,
+    flex: 1,
+    color: colors.textPrimary,
+    paddingVertical: 0,
+  },
   filtersRow: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,

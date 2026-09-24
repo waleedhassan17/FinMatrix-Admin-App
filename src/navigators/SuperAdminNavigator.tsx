@@ -18,6 +18,7 @@ import SubscriptionPlansScreen from '../screens/SuperAdmin/SubscriptionPlans/Sub
 import PaymentSubmissionsScreen from '../screens/SuperAdmin/PaymentSubmissions/PaymentSubmissionsScreen';
 import AdminSettingsScreen from '../screens/SuperAdmin/AdminSettings/AdminSettingsScreen';
 import { THEME } from '../theme';
+import { BILLING_DISABLED_BUILD } from '../utils/featureFlags';
 
 /**
  * Companies is a NESTED NAVIGATOR now, and its entry is typed to say so.
@@ -87,9 +88,16 @@ const SuperAdminNavigator: React.FC = () => (
   >
     <Tab.Screen name="Dashboard" component={SuperAdminDashboardScreen} />
     <Tab.Screen name="Companies" component={CompaniesStackNavigator} />
-    <Tab.Screen name="Payments" component={PaymentSubmissionsScreen} />
-    <Tab.Screen name="Analytics" component={RevenueAnalyticsScreen} />
-    <Tab.Screen name="Plans" component={SubscriptionPlansScreen} />
+    {/* BILLING-DISABLED BUILD: nothing is sold, so there are no payments to
+        verify, no revenue to chart and no plans to edit. The screens are
+        unregistered, not deleted — flipping the flag brings them back. */}
+    {!BILLING_DISABLED_BUILD && (
+      <>
+        <Tab.Screen name="Payments" component={PaymentSubmissionsScreen} />
+        <Tab.Screen name="Analytics" component={RevenueAnalyticsScreen} />
+        <Tab.Screen name="Plans" component={SubscriptionPlansScreen} />
+      </>
+    )}
     <Tab.Screen name="Settings" component={AdminSettingsScreen} />
   </Tab.Navigator>
 );

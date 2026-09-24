@@ -1,543 +1,428 @@
 // ═══════════════════════════════════════════════════════
-// FinMatrix — Super Admin Dashboard (MetroMatrix-inspired)
+// FinMatrix Admin — Dashboard
 // ═══════════════════════════════════════════════════════
+// Answers "what do I need to do?" first, then "where do things stand?".
+//
+//   1. Awaiting approval — the queue itself, with Approve on each row, so a
+//      routine approval is one tap and a confirm. Tapping a company opens it
+//      for anything more (reject with a reason, contact the owner).
+//   2. Six counts, each opening that slice of the Companies list.
+//   3. Who signed up most recently, and who to contact.
+//
+// It used to open with a greeting banner, four stat cards (one about
+// subscriptions), a stats bar counting plans, quick actions to "Manage Plans"
+// and a drawer that repeated the tab bar underneath it. While plans are
+// switched off none of that describes anything an administrator can act on.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  RefreshControl,
   TouchableOpacity,
-  Animated,
-  Dimensions,
-  Modal,
-  Platform,
-  StatusBar,
-  TouchableWithoutFeedback,
   ActivityIndicator,
+  RefreshControl,
+  StatusBar,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAppDispatch, useAppSelector } from '../../hooks/useReduxHooks';
-import { selectUser } from '../Auth/authSlice';
-import { useSignOut } from '../../hooks/useSignOut';
 import { THEME } from '../../theme';
-import { AdminScreenHeader, KpiStatCard, DataTableRow } from '../../components/admin/AdminUI';
-
-// Design-system tokens (see src/theme/theme.ts).
-const { colors, radius, shadows, spacing, typography } = THEME;
+import { AdminScreenHeader, DataTableRow } from '../../components/admin/AdminUI';
+import { Alert } from '../../utils/alert';
+import { companyStatusLabel, isUnsubmitted } from '../../utils/companyStatus';
+import { getAllCompaniesAPI } from '../../networks/billing/superAdminNetwork';
+import { companyListResponseSerializer } from '../../serializers/superAdminSerializer';
+import type { CompanyListItem } from '../../models/superAdminModel';
 import {
   loadPlatformStats,
   selectPlatformStats,
-  selectStatsStatus,
   selectStatsError,
+  selectStatsStatus,
+  updateCompanyStatusLocal,
 } from './superAdminSlice';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const DRAWER_WIDTH = SCREEN_W * 0.78;
-const STATUS_H = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+const { colors, radius, spacing, typography, shadows } = THEME;
 
-// ── Sidebar Drawer ────────────────────────────────────
-const SidebarDrawer: React.FC<{
-  visible: boolean;
-  onClose: () => void;
-  navigation: NativeStackNavigationProp<any>;
-  userName: string;
-  onSignOut: () => void;
-}> = ({ visible, onClose, navigation, userName, onSignOut }) => {
-  const slideX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+/** How many waiting companies the dashboard lists before "View all". */
+const QUEUE_PREVIEW = 5;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(slideX, {
-        toValue: visible ? 0 : -DRAWER_WIDTH,
-        tension: 70,
-        friction: 12,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: visible ? 1 : 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [visible]);
+const fmtDate = (iso: string | null | undefined): string =>
+  iso
+    ? new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
 
-  // One entry per tab in SuperAdminNavigator. Payments was missing -- the
-  // review queue, which is the console's main job, had no drawer entry at all.
-  const menuItems = [
-    { icon: 'grid', label: 'Dashboard', screen: 'Dashboard' },
-    { icon: 'briefcase', label: 'Companies', screen: 'Companies' },
-    { icon: 'check-square', label: 'Payment Verification', screen: 'Payments' },
-    { icon: 'bar-chart-2', label: 'Revenue Analytics', screen: 'Analytics' },
-    { icon: 'credit-card', label: 'Subscription Plans', screen: 'Plans' },
-    { icon: 'settings', label: 'Settings', screen: 'Settings' },
-  ];
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={S.drawerOverlay}>
-        <TouchableWithoutFeedback onPress={onClose}>
-          <Animated.View style={[S.drawerBackdrop, { opacity: backdropOpacity }]} />
-        </TouchableWithoutFeedback>
-        <Animated.View
-          style={[S.drawer, { transform: [{ translateX: slideX }], paddingTop: STATUS_H + 16 }]}
-        >
-          <LinearGradient colors={[colors.primary, colors.primaryDark]} style={S.drawerHeader}>
-            <View style={S.drawerAvatar}>
-              <Text style={S.drawerAvatarText}>
-                {userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-            <Text style={S.drawerName}>{userName}</Text>
-            <Text style={S.drawerRole}>Super Admin</Text>
-          </LinearGradient>
-
-          <View style={S.drawerMenu}>
-            {menuItems.map(item => (
-              <TouchableOpacity
-                key={item.screen}
-                style={S.drawerItem}
-                onPress={() => {
-                  onClose();
-                  setTimeout(
-                    () => navigation.navigate(item.screen as never),
-                    150,
-                  );
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={S.drawerItemIcon}>
-                  <Feather name={item.icon as any} size={18} color={colors.primary} />
-                </View>
-                <Text style={S.drawerItemText}>{item.label}</Text>
-                <Feather name="chevron-right" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity style={S.drawerSignOut} onPress={onSignOut} activeOpacity={0.8}>
-            <Feather name="log-out" size={18} color={colors.danger} />
-            <Text style={S.drawerSignOutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
+type Queue = {
+  items: CompanyListItem[];
+  total: number;
+  status: 'loading' | 'idle' | 'failed';
+  error: string;
 };
 
-// ═══════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════
 const SuperAdminDashboardScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const insets = useSafeAreaInsets();
-  const user = useAppSelector(selectUser);
   const stats = useAppSelector(selectPlatformStats);
   const statsStatus = useAppSelector(selectStatsStatus);
   const statsError = useAppSelector(selectStatsError);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    dispatch(loadPlatformStats());
-  }, [dispatch]);
+  const [queue, setQueue] = useState<Queue>({ items: [], total: 0, status: 'loading', error: '' });
+  const [refreshing, setRefreshing] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  // Its own request rather than the Companies tab's store slice: that slice
+  // holds whatever filter and search the reviewer left the list on, and the
+  // dashboard must not change them from under the other tab.
+  const loadQueue = useCallback(async () => {
+    try {
+      const res = companyListResponseSerializer(
+        await getAllCompaniesAPI(1, QUEUE_PREVIEW, 'pending'),
+      );
+      setQueue({ items: res.data, total: res.total, status: 'idle', error: '' });
+    } catch (e) {
+      setQueue(q => ({
+        ...q,
+        status: 'failed',
+        error: e instanceof Error ? e.message : 'Could not load the approval queue.',
+      }));
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    await Promise.all([dispatch(loadPlatformStats()), loadQueue()]);
+  }, [dispatch, loadQueue]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await dispatch(loadPlatformStats());
-    setRefreshing(false);
-  }, [dispatch]);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
-  // Full sign-out (confirm → revoke server-side → clear tokens → reset store);
-  // a raw dispatch(signOut()) here left the AsyncStorage tokens behind, so a
-  // cold start silently signed the super admin back in.
-  const { confirmSignOut } = useSignOut();
-  const onSignOut = useCallback(() => {
-    setDrawerOpen(false);
-    // Let the drawer close before the confirm alert appears.
-    setTimeout(confirmSignOut, 150);
-  }, [confirmSignOut]);
+  const openCompanies = (filter?: string) =>
+    navigation.navigate('Companies', {
+      screen: 'CompanyList',
+      params: filter ? { filter } : undefined,
+    });
 
-  const isLoading = statsStatus === 'loading' && !stats;
-  const displayName = user?.displayName ?? 'Super Admin';
+  const openCompany = (c: { id: string; name: string }) =>
+    navigation.navigate('Companies', {
+      screen: 'CompanyDetail',
+      params: { id: c.id, name: c.name },
+    });
+
+  const approve = (c: CompanyListItem) => {
+    Alert.alert(
+      `Approve ${c.name}?`,
+      'The owner can sign in and start using FinMatrix straight away, and we email them to say so.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: async () => {
+            setApprovingId(c.id);
+            try {
+              await dispatch(updateCompanyStatusLocal({ id: c.id, status: 'active' })).unwrap();
+              await load();
+            } catch (e) {
+              Alert.alert(
+                'Could not approve the company',
+                e instanceof Error && e.message
+                  ? e.message
+                  : 'Please check your connection and try again.',
+              );
+            } finally {
+              setApprovingId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const companies = stats?.companies;
+  const counts: { label: string; value: number | undefined; filter?: string; tone?: string }[] = [
+    { label: 'Companies', value: companies?.total },
+    { label: 'Active', value: companies?.active, filter: 'active', tone: colors.success },
+    {
+      label: 'Awaiting approval',
+      value: companies?.pending,
+      filter: 'pending',
+      tone: companies?.pending ? colors.warning : undefined,
+    },
+    { label: 'Deactivated', value: companies?.suspended, filter: 'inactive' },
+    { label: 'Rejected', value: companies?.rejected, filter: 'rejected' },
+    { label: 'New this week', value: companies?.recentWeek },
+  ];
 
   return (
     <SafeAreaView style={S.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <AdminScreenHeader
-        title="FinMatrix Admin"
-        subtitle="Platform Control Panel"
-        left={
-          <TouchableOpacity onPress={() => setDrawerOpen(true)} style={S.menuBtn} activeOpacity={0.7}>
-            <Feather name="menu" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-        }
+        title="Dashboard"
+        subtitle="Approve companies and see who is active"
         right={
-          <LinearGradient colors={[colors.primary, colors.primaryDark]} style={S.avatarGrad}>
-            <Text style={S.avatarText}>
-              {displayName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-            </Text>
-          </LinearGradient>
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={S.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
+          >
+            <Feather name="refresh-cw" size={18} color={colors.primary} />
+          </TouchableOpacity>
         }
       />
 
       <ScrollView
-        contentContainerStyle={[S.content, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[S.content, { paddingBottom: insets.bottom + spacing.lg }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
-        {/* Welcome Banner */}
-        <LinearGradient
-          colors={[colors.primary, colors.primaryDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={S.welcomeBanner}
-        >
-          <View style={S.welcomeDecor} />
-          <Text style={S.welcomeGreet}>
-            {`Good ${new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'},`}
-          </Text>
-          <Text style={S.welcomeName}>{displayName}</Text>
-          <Text style={S.welcomeSub}>
-            {stats
-              ? `${stats.companies.pending} companies awaiting review`
-              : 'Loading platform data...'}
-          </Text>
-        </LinearGradient>
-
-        {isLoading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={S.loader} />
-        ) : statsError ? (
-          <View style={S.errorBox}>
-            <Feather name="alert-circle" size={20} color={colors.danger} />
-            <Text style={S.errorText}>{statsError}</Text>
-            <TouchableOpacity onPress={load} style={S.retryBtn}>
-              <Text style={S.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : stats ? (
-          <>
-            {/* Stats Grid */}
-            <Text style={S.sectionTitle}>Platform Overview</Text>
-            <View style={S.statsGrid}>
-              <KpiStatCard
-                label="Total Companies"
-                value={stats.companies.total}
-                icon="briefcase"
-                delay={0}
-              />
-              <KpiStatCard
-                label="Pending Review"
-                value={stats.companies.pending}
-                subtitle="Awaiting approval"
-                icon="clock"
-                delay={80}
-              />
-              <KpiStatCard
-                label="Active Companies"
-                value={stats.companies.active}
-                icon="check-circle"
-                delay={160}
-              />
-              <KpiStatCard
-                label="Active Subs"
-                value={stats.subscriptions.activeSubscriptions}
-                subtitle={`of ${stats.subscriptions.totalSubscriptions} total`}
-                icon="credit-card"
-                delay={240}
-              />
+        {/* 1 ── The queue ─────────────────────────────────────────── */}
+        <View style={S.card}>
+          <View style={S.cardHead}>
+            <View style={S.flex}>
+              <Text style={S.cardTitle}>Awaiting approval</Text>
+              <Text style={S.cardSub}>
+                {queue.status === 'loading'
+                  ? 'Loading…'
+                  : queue.total > 0
+                    ? `${queue.total} ${queue.total === 1 ? 'company is' : 'companies are'} waiting for a decision`
+                    : 'Nothing is waiting for a decision'}
+              </Text>
             </View>
-
-            {/* Quick Stats Bar */}
-            <View style={S.quickStatsBar}>
-              <View style={S.quickStatItem}>
-                <Text style={[S.quickStatVal, { color: colors.textPrimary }]}>
-                  {stats.companies.suspended}
-                </Text>
-                <Text style={S.quickStatLabel}>Suspended</Text>
-              </View>
-              <View style={S.qsDivider} />
-              <View style={S.quickStatItem}>
-                <Text style={[S.quickStatVal, { color: colors.textPrimary }]}>
-                  {stats.companies.rejected}
-                </Text>
-                <Text style={S.quickStatLabel}>Rejected</Text>
-              </View>
-              <View style={S.qsDivider} />
-              <View style={S.quickStatItem}>
-                <Text style={[S.quickStatVal, { color: colors.textPrimary }]}>
-                  {stats.subscriptions.totalPlans}
-                </Text>
-                <Text style={S.quickStatLabel}>Plans</Text>
-              </View>
-              <View style={S.qsDivider} />
-              <View style={S.quickStatItem}>
-                <Text style={[S.quickStatVal, { color: colors.textPrimary }]}>
-                  {stats.companies.recentWeek}
-                </Text>
-                <Text style={S.quickStatLabel}>This Week</Text>
-              </View>
-            </View>
-
-            {/* Quick Actions */}
-            <Text style={S.sectionTitle}>Quick Actions</Text>
-            <View style={S.actionsRow}>
-              <TouchableOpacity
-                style={S.actionCard}
-                // Was identical to "All Companies" beside it -- two tiles, one
-                // destination. A tile with a pending badge should land on the
-                // pending queue.
-                onPress={() =>
-                  navigation.navigate('Companies', {
-                    screen: 'CompanyList',
-                    params: { filter: 'pending' },
-                  })
-                }
-                activeOpacity={0.75}
-              >
-                <View style={S.actionSurface}>
-                  <View style={S.actionIconWrap}>
-                    <Feather name="clock" size={18} color={colors.primary} />
-                  </View>
-                  <Text style={S.actionLabel}>Review{' '}Companies</Text>
-                  {stats.companies.pending > 0 && (
-                    <View style={S.actionBadge}>
-                      <Text style={S.actionBadgeText}>{stats.companies.pending}</Text>
-                    </View>
-                  )}
-                </View>
+            {queue.total > QUEUE_PREVIEW && (
+              <TouchableOpacity onPress={() => openCompanies('pending')} accessibilityRole="button">
+                <Text style={S.link}>View all</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={S.actionCard}
-                onPress={() =>
-                  navigation.navigate('Companies', { screen: 'CompanyList' })
-                }
-                activeOpacity={0.75}
-              >
-                <View style={S.actionSurface}>
-                  <View style={S.actionIconWrap}>
-                    <Feather name="briefcase" size={18} color={colors.primary} />
-                  </View>
-                  <Text style={S.actionLabel}>All Companies</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={S.actionCard}
-                onPress={() => navigation.navigate('Plans')}
-                activeOpacity={0.75}
-              >
-                <View style={S.actionSurface}>
-                  <View style={S.actionIconWrap}>
-                    <Feather name="credit-card" size={18} color={colors.primary} />
-                  </View>
-                  <Text style={S.actionLabel}>Manage Plans</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Recent Registrations */}
-            {stats.recentRegistrations.length > 0 && (
-              <>
-                <View style={S.sectionHeader}>
-                  <Text style={S.sectionTitle}>Recent Registrations</Text>
-                  <TouchableOpacity
-                    onPress={() =>
-                      navigation.navigate('Companies', { screen: 'CompanyList' })
-                    }
-                  >
-                    <Text style={S.seeAllText}>See All →</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={S.card}>
-                  {stats.recentRegistrations.map(item => (
-                    <DataTableRow
-                      key={item.id}
-                      initials={item.name}
-                      title={item.name}
-                      meta={item.industry ?? 'General'}
-                      status={item.status}
-                      // Opens that company rather than the bare list. Tapping a
-                      // named row and landing on an unfiltered index is the
-                      // kind of thing that reads as a broken link.
-                      onPress={() =>
-                        navigation.navigate('Companies', {
-                          screen: 'CompanyDetail',
-                          params: { id: item.id, name: item.name },
-                        })
-                      }
-                    />
-                  ))}
-                </View>
-              </>
             )}
-          </>
-        ) : null}
-      </ScrollView>
+          </View>
 
-      {/* Sidebar */}
-      <SidebarDrawer
-        visible={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        navigation={navigation}
-        userName={displayName}
-        onSignOut={onSignOut}
-      />
+          {queue.status === 'loading' ? (
+            <ActivityIndicator color={colors.primary} style={S.loader} />
+          ) : queue.status === 'failed' ? (
+            <View style={S.inlineState}>
+              <Text style={S.errorText}>{queue.error}</Text>
+              <TouchableOpacity onPress={loadQueue} accessibilityRole="button">
+                <Text style={S.link}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : queue.items.length === 0 ? (
+            <View style={S.inlineState}>
+              <Feather name="check-circle" size={18} color={colors.success} />
+              <Text style={S.muted}>
+                All caught up. New registrations appear here the moment they are submitted.
+              </Text>
+            </View>
+          ) : (
+            queue.items.map((c, i) => (
+              <View key={c.id} style={[S.queueRow, i > 0 && S.divider]}>
+                <TouchableOpacity
+                  style={S.flex}
+                  onPress={() => openCompany(c)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${c.name}`}
+                >
+                  <View style={S.nameRow}>
+                    <Text style={S.queueName} numberOfLines={1}>{c.name}</Text>
+                    {isUnsubmitted(c.status) && (
+                      <Text style={S.unsubmitted}>Not submitted</Text>
+                    )}
+                  </View>
+                  <Text style={S.queueMeta} numberOfLines={1}>
+                    {[c.ownerName, c.ownerEmail ?? c.email].filter(Boolean).join(' · ') || '—'}
+                  </Text>
+                  <Text style={S.queueDate}>Registered {fmtDate(c.createdAt)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={S.approveBtn}
+                  onPress={() => approve(c)}
+                  disabled={approvingId === c.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Approve ${c.name}`}
+                >
+                  {approvingId === c.id ? (
+                    <ActivityIndicator size="small" color={colors.neutral0} />
+                  ) : (
+                    <Text style={S.approveText}>Approve</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* 2 ── Where things stand ────────────────────────────────── */}
+        {statsError && !stats ? (
+          <View style={S.card}>
+            <View style={S.inlineState}>
+              <Text style={S.errorText}>{statsError}</Text>
+              <TouchableOpacity onPress={() => dispatch(loadPlatformStats())} accessibilityRole="button">
+                <Text style={S.link}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={S.countGrid}>
+            {counts.map(item => (
+              <TouchableOpacity
+                key={item.label}
+                style={S.countCell}
+                onPress={() => openCompanies(item.filter)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label}: ${item.value ?? 0}`}
+              >
+                <Text style={S.countLabel} numberOfLines={1}>{item.label}</Text>
+                {statsStatus === 'loading' && !stats ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={S.countLoader} />
+                ) : (
+                  <Text style={[S.countValue, item.tone ? { color: item.tone } : null]}>
+                    {(item.value ?? 0).toLocaleString('en-US')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* 3 ── Recent sign-ups ───────────────────────────────────── */}
+        {stats && stats.recentRegistrations.length > 0 && (
+          <View style={S.card}>
+            <View style={S.cardHead}>
+              <Text style={[S.cardTitle, S.flex]}>Recent sign-ups</Text>
+              <TouchableOpacity onPress={() => openCompanies()} accessibilityRole="button">
+                <Text style={S.link}>All companies</Text>
+              </TouchableOpacity>
+            </View>
+            {stats.recentRegistrations.map((r, i) => (
+              <DataTableRow
+                key={r.id}
+                initials={r.name}
+                title={r.name}
+                meta={
+                  [r.ownerName, r.ownerEmail ?? r.email].filter(Boolean).join(' · ') ||
+                  (r.industry ?? '—')
+                }
+                status={r.status}
+                statusLabel={companyStatusLabel(r.status)}
+                onPress={() => openCompany(r)}
+                last={i === stats.recentRegistrations.length - 1}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ─── Styles ──────────────────────────────────────────
-
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  menuBtn: { padding: spacing.xxs },
-  avatarGrad: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { ...typography.labelMd, color: colors.neutral0 },
-
-  content: { padding: spacing.md, gap: 14 },
-  loader: { marginTop: spacing.xxxl },
-
-  errorBox: {
-    alignItems: 'center', gap: spacing.xs, padding: spacing.lg,
-    backgroundColor: colors.surface, borderRadius: radius.lg,
-  },
-  errorText: { ...typography.bodySm, color: colors.danger, textAlign: 'center' },
-  retryBtn: {
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.xs,
-    backgroundColor: colors.primary, borderRadius: radius.sm,
-  },
-  retryText: { ...typography.labelMd, color: colors.neutral0 },
-
-  welcomeBanner: {
-    borderRadius: radius.xl, padding: spacing.lg, overflow: 'hidden', position: 'relative',
-  },
-  welcomeDecor: {
-    position: 'absolute', right: -30, top: -30,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  welcomeGreet: { ...typography.bodySm, color: 'rgba(255,255,255,0.8)' },
-  welcomeName: { ...typography.h2, color: colors.neutral0, marginTop: 2 },
-  welcomeSub: {
-    ...typography.labelSm, color: 'rgba(255,255,255,0.75)', marginTop: 6,
-  },
-
-  sectionTitle: { ...typography.labelLg, color: colors.textPrimary },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-  },
-  seeAllText: { ...typography.labelMd, color: colors.primary },
-
-  statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
-  },
-
-  quickStatsBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  quickStatItem: { flex: 1, alignItems: 'center', gap: 3 },
-  quickStatVal: { ...typography.h3, fontVariant: ['tabular-nums'] },
-  quickStatLabel: { ...typography.overline, color: colors.textSecondary },
-  qsDivider: { width: 1, backgroundColor: colors.border, marginVertical: spacing.xxs },
-
-  actionsRow: { flexDirection: 'row', gap: 10 },
-  actionCard: { flex: 1, borderRadius: radius.lg, overflow: 'hidden' },
-  actionSurface: {
-    backgroundColor: colors.surface,
-    padding: 14, minHeight: 90,
-    alignItems: 'flex-start', gap: spacing.xs, position: 'relative',
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg,
-  },
-  actionIconWrap: {
-    width: 32, height: 32, borderRadius: radius.sm,
-    backgroundColor: colors.primaryLighter,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  actionLabel: { ...typography.labelSm, color: colors.textPrimary, lineHeight: 16 },
-  actionBadge: {
-    position: 'absolute', top: 10, right: 10,
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    minWidth: 20, height: 20,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  actionBadgeText: { ...typography.overline, color: colors.neutral0 },
+  content: { padding: spacing.md, gap: spacing.md },
+  flex: { flex: 1, minWidth: 0 },
+  iconBtn: { padding: spacing.xxs },
 
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
-  },
-
-  // Drawer
-  drawerOverlay: { flex: 1, flexDirection: 'row' },
-  drawerBackdrop: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  drawer: {
-    width: DRAWER_WIDTH,
     backgroundColor: colors.surface,
-    shadowColor: colors.neutral900,
-    shadowOffset: { width: 4, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 16,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadows.card,
   },
-  drawerHeader: {
-    padding: spacing.lg, paddingBottom: spacing.xl, alignItems: 'center', gap: 6,
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  drawerAvatar: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.xxs,
+  cardTitle: { ...typography.labelLg, color: colors.textPrimary },
+  cardSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  link: { ...typography.labelMd, color: colors.primary },
+
+  loader: { paddingVertical: spacing.lg },
+  inlineState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
   },
-  drawerAvatarText: { ...typography.h2, color: colors.neutral0 },
-  drawerName: { ...typography.h4, color: colors.neutral0 },
-  drawerRole: { ...typography.caption, color: 'rgba(255,255,255,0.75)' },
-  drawerMenu: { flex: 1, paddingTop: spacing.sm },
-  drawerItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingVertical: 14, gap: 14,
+  muted: { ...typography.bodySm, color: colors.textSecondary, flex: 1 },
+  errorText: { ...typography.bodySm, color: colors.danger, flex: 1 },
+
+  queueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  drawerItemIcon: {
-    width: 38, height: 38, borderRadius: radius.md,
-    backgroundColor: colors.primaryLighter,
-    alignItems: 'center', justifyContent: 'center',
+  divider: { borderTopWidth: 1, borderTopColor: colors.borderLight },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  queueName: { ...typography.labelLg, color: colors.textPrimary, flexShrink: 1 },
+  unsubmitted: {
+    ...typography.overline,
+    color: colors.textSecondary,
+    backgroundColor: colors.neutral100,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
   },
-  drawerItemText: { flex: 1, ...typography.h5, color: colors.textPrimary },
-  drawerSignOut: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: spacing.lg, gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border,
+  queueMeta: { ...typography.bodySm, color: colors.textSecondary, marginTop: 2 },
+  queueDate: { ...typography.caption, color: colors.textTertiary, marginTop: 2 },
+  approveBtn: {
+    minWidth: 84,
+    height: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  drawerSignOutText: { ...typography.h5, color: colors.danger },
+  approveText: { ...typography.labelMd, color: colors.neutral0 },
+
+  countGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  countCell: {
+    // Two per row: (100% - one gap) / 2, expressed as a flex basis.
+    flexGrow: 1,
+    flexBasis: '45%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    ...shadows.card,
+  },
+  countLabel: { ...typography.caption, color: colors.textSecondary },
+  countValue: {
+    ...typography.h2,
+    color: colors.textPrimary,
+    marginTop: spacing.xxs,
+    fontVariant: ['tabular-nums'],
+  },
+  countLoader: { alignSelf: 'flex-start', marginTop: spacing.xs },
 });
 
 export default SuperAdminDashboardScreen;

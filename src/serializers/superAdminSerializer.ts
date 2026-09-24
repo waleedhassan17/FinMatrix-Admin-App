@@ -99,6 +99,9 @@ export const companyRowSerializer = (raw: unknown): CompanyListItem => {
     isTrial: bool(c.isTrial),
     trialStartedAt: nstr(c.trialStartedAt),
     trialConvertedAt: nstr(c.trialConvertedAt),
+    ownerName: nstr(c.ownerName),
+    ownerEmail: nstr(c.ownerEmail),
+    ownerPhone: nstr(c.ownerPhone),
   };
 };
 
@@ -142,6 +145,17 @@ export const companyDetailResponseSerializer = (res: any): CompanyDetail => {
     trialConvertedAt: nstr(c.trialConvertedAt),
     members: arr<unknown>(c.members).map(companyMemberSerializer),
     subscriptions: arr<unknown>(c.subscriptions).map(subscriptionRowSerializer),
+    owner: (() => {
+      const o = obj(c.owner);
+      if (!o.id) return null;
+      return {
+        id: str(o.id),
+        displayName: nstr(o.displayName),
+        email: nstr(o.email),
+        phone: nstr(o.phone),
+        isEmailVerified: bool(o.isEmailVerified),
+      };
+    })(),
   };
 };
 
@@ -211,6 +225,8 @@ export const platformStatsResponseSerializer = (res: any): PlatformStats => {
         email: nstr(r.email),
         status: str(r.status, 'pending'),
         createdAt: str(r.createdAt),
+        ownerName: nstr(r.ownerName),
+        ownerEmail: nstr(r.ownerEmail),
       };
     }),
   };

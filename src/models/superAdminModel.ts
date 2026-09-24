@@ -26,6 +26,9 @@ export interface PlatformStats {
     email: string | null;
     status: string;
     createdAt: string;
+    /** Who registered it; null from a server that predates the field. */
+    ownerName: string | null;
+    ownerEmail: string | null;
   }[];
 }
 
@@ -46,6 +49,20 @@ export interface CompanyListItem {
   isTrial: boolean;
   trialStartedAt: string | null;
   trialConvertedAt: string | null;
+  // The owner — who an administrator actually calls about a company. Null from
+  // a server that predates them; the UI falls back to the company's email.
+  ownerName: string | null;
+  ownerEmail: string | null;
+  ownerPhone: string | null;
+}
+
+/** The person who registered the company (its `createdBy`). */
+export interface CompanyOwner {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  isEmailVerified: boolean;
 }
 
 export type CompanyType = 'small_business' | 'large_org' | 'warehouse';
@@ -86,6 +103,7 @@ export interface CompanyDetail {
   trialConvertedAt: string | null;
   members: CompanyMember[];
   subscriptions: CompanySubscription[];
+  owner: CompanyOwner | null;
 }
 
 /**

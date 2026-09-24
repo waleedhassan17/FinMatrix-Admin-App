@@ -25,6 +25,8 @@ export const getAllCompaniesAPI = async (
   limit = 20,
   status?: string,
   isTrial?: boolean,
+  /** Company name or email, or the owner's name or email ("contains"). */
+  search?: string,
 ): Promise<any> => {
   try {
     const res = await api.get('/super-admin/companies', {
@@ -32,6 +34,7 @@ export const getAllCompaniesAPI = async (
         page,
         limit,
         ...(status ? { status } : {}),
+        ...(search?.trim() ? { search: search.trim() } : {}),
         // Only sent when filtering. The server ignores anything that is not
         // 'true'/'false', and page/limit go through a ParseIntPipe that 400s
         // on an empty string -- so undefined is omitted, never serialised.
