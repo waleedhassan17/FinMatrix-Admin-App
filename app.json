@@ -20,7 +20,7 @@
       "package": "com.finmatrix.admin",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#F6F7F9"
       },
       "permissions": []
     },

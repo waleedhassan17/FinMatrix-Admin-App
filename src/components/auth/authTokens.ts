@@ -71,10 +71,10 @@ export const AUTH = {
   mint: '#EAF0F6',
   mintBorder: '#C7D8E8',
 
-  // The accent on the DARK header — the "Fin" wordmark, the portal pill's dot,
-  // the progress segments. Deliberately left green: it is the WORDMARK, not a
-  // control, and navy on a #111D28 header would be invisible. If the logo
-  // should move to the navy family too, this is the one line to change.
+  // The accent on the DARK header — the portal pill's dot and the progress
+  // segments. Green because navy on a #111D28 header would be invisible. It no
+  // longer colours the wordmark: the header carries the brand mark now
+  // (components/brand/BrandMark.tsx).
   brandDot: '#10B981',
 
   // ── Status tints ──

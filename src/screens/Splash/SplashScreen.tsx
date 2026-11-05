@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { THEME } from '../../utils/theme';
+import BrandMark from '../../components/brand/BrandMark';
 
 // ═══════════════════════════════════════
 // Design Tokens (pixel-perfect match)
@@ -256,10 +257,9 @@ const SplashOverlay: React.FC<SplashOverlayProps> = ({ onFinish }) => {
               transform: [{ translateY: wordTransY }, { scale: wordScale }]
             },
           ]}>
-          <Text style={$.wordmark}>
-            <Text style={$.wordFin}>Fin</Text>
-            <Text style={$.wordMatrix}>Matrix</Text>
-          </Text>
+          {/* The mark over the name; white "m" on the dark ground, red rule. */}
+          <BrandMark size={80} />
+          <Text style={$.wordmark}>FinMatrix</Text>
         </Animated.View>
 
         {/* Tagline */}
@@ -366,17 +366,14 @@ const $ = StyleSheet.create({
 
   // ── Wordmark ──
   wordmarkWrap: {
+    alignItems: 'center',
+    gap: 16,
     marginBottom: 12
   },
   wordmark: {
     ...THEME.typography.displayLg,
+    color: B.w95,
     letterSpacing: -1
-  },
-  wordFin: {
-    color: B.emerald
-  },
-  wordMatrix: {
-    color: B.w95
   },
 
   // ── Tagline ──

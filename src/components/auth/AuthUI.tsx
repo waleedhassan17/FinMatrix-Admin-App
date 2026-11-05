@@ -36,6 +36,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { AUTH, type AuthTone } from './authTokens';
 import { THEME } from '../../theme';
+import BrandMark from '../brand/BrandMark';
 
 // The auth flow keeps its own colour world (AUTH); type comes from the
 // app scale so the flow is not a second typographic system.
@@ -119,9 +120,9 @@ export const AuthHeader: React.FC<{
       )}
 
       {brand ? (
-        <View style={s.brand}>
-          <Text style={s.brandFin}>Fin</Text>
-          <Text style={s.brandMatrix}>Matrix</Text>
+        <View style={s.brand} accessible accessibilityLabel="FinMatrix">
+          <BrandMark size={27} />
+          <Text style={s.brandName}>FinMatrix</Text>
         </View>
       ) : null}
 
@@ -520,13 +521,8 @@ const s = StyleSheet.create({
     textTransform: 'uppercase',
     color: AUTH.header.pillText,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', marginBottom: AUTH.space.sm },
-  brandFin: {
-    ...typography.h4,
-    fontFamily: AUTH.font,
-    color: AUTH.brandDot,
-  },
-  brandMatrix: {
+  brand: { flexDirection: 'row', alignItems: 'center', gap: AUTH.space.sm, marginBottom: AUTH.space.sm },
+  brandName: {
     ...typography.h4,
     fontFamily: AUTH.font,
     color: AUTH.header.title,
