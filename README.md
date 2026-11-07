@@ -35,7 +35,7 @@ in `android/`, because the next prebuild overwrites it.
 ```ts
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim() ||
-  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
+  'https://finmatrix-api.duckdns.org/api/v1';
 ```
 
 > **The default is production.** Approving or rejecting a payment submission there

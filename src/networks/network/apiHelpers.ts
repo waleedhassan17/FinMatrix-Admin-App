@@ -22,7 +22,7 @@ import {
 // ★ BACKEND BASE URL ★
 // Production by default, so a normal build is unchanged. Override to run
 // against a backend you are still working on — otherwise every request goes
-// to Heroku and a server-side change cannot be tested before it ships:
+// to production and a server-side change cannot be tested before it ships:
 //
 //   EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1 npm run web
 //
@@ -32,7 +32,7 @@ import {
 // of process.env rather than a computed key.
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim() ||
-  'https://finmatrix-api-prod-665c6b5cb6a1.herokuapp.com/api/v1';
+  'https://finmatrix-api.duckdns.org/api/v1';
 
 // Token/company storage lives in utils/storageUtils.ts (Consultant_Mobile
 // convention); re-exported here so the domain network files keep importing
